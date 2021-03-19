@@ -1,0 +1,48 @@
+language: c++
+
+cache:
+  ccache: true
+  pip: true
+
+addons:
+  apt:
+    packages:
+      - python3
+      - python3-pip
+      - python3-setuptools
+    update: true
+
+jobs:
+  include:
+    - os: linux
+      dist: focal
+      env:
+        - RUN_TYPE=coverage
+        - MATRIX_EVAL="CC=clang-11 && CXX=clang++-11"
+    - os: linux
+      dist: focal
+      env:
+        - RUN_TYPE=test
+        - MATRIX_EVAL="CC=gcc && CXX=g++"
+    - os: linux
+      dist: focal
+      env:
+        - RUN_TYPE=test
+        - MATRIX_EVAL="CC=clang-11 && CXX=clang++-11"
+
+before_install:
+  eval "${MATRIX_EVAL}"
+
+install:
+  - ci/install.sh
+
+script:
+  - ci/build.sh && ci/test.sh
+
+after_success:
+  - ci/after_success.sh
+
+notifications:
+  slack:
+    secure: cTHSV2ZeQgQWJ/l9RWHshOsg6X9QQFw3W1HcuD1TmPxAreWJqd2uXY5OqOlXUWfHE1zVKjXf2BY3egZn6ugaXZHXq4DaMb9uCdI/PlsY/srCL955wHpUX/wqrZgFrBptaiBvGOfsVEjEpfR/qPOUDdSFp/W//xshNWj7qLvqD/bHacioLYlpUlMdAq6nYYq5ekggw0A90NSP+UBtgGZHk95UCw1VVEU69CoaZeBKSSbempp2aFm6v1YIGmzbF6DD7VDKjwIH5avvpIJ7HVfLiICmqEEgBN3Yugi1aLs+8Jv5GffbkgEtFcQPjBhkqHDYGyOOsg3NJD9DORA41lJHYTug+zt6ZO/ItmaCxitnavKp6/0rai7pWV5QocnaRfavMcsaNKFHM/dyu+pkuiNrvmsKphTJetyFR6f+tIzxMbXOgcm6OA1WzQ0GozvpVpLeUeReQXl4TncSrWlYUPY+jZsQp7QOHRBA4sqaOpjkMEjC3gzMbHU/Ec/n3Nau28bGZjMupw3XUHeWbxdLWZ/hO0II9TYPe5PzEkoQOhZ4smOPKMhIuGi5oar0kzDb/3EsFdRyZ6Zxnf2Ihx8HhZuTx2MjnMfVvLWUrrcnRa1shcxBHjd1KyfcLoDEzLGarQmoeaWH6Z1EShivMtQ/PyMD1QzM3o7Ct4YJaqa174qg3ig=
+    on_success: never
