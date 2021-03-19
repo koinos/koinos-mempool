@@ -8,7 +8,9 @@
 
 #define MAX_PENDING_TRANSACTION_REQUEST 100
 
-namespace koinos::chain {
+namespace koinos::mempool {
+
+using account_type = variable_blob;
 
 KOINOS_DECLARE_EXCEPTION( pending_transaction_insertion_failure );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_exceeds_resources );
@@ -39,4 +41,4 @@ public:
    std::size_t payer_entries_size();
 };
 
-} // koinos::chain
+} // koinos::mempool

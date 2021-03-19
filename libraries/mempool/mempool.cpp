@@ -10,7 +10,7 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
 
-namespace koinos::chain {
+namespace koinos::mempool {
 
 namespace detail {
 
@@ -294,4 +294,4 @@ std::size_t mempool::payer_entries_size()
    return _my->payer_entries_size();
 }
 
-} // koinos::chain
+} // koinos::mempool
