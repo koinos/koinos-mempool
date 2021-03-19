@@ -75,6 +75,11 @@ public:
 
    bool has_pending_transaction( const multihash& id );
    std::vector< protocol::transaction > get_pending_transactions( const multihash& start, std::size_t limit );
+   bool check_pending_account_resources(
+      const account_type& payer,
+      const uint128& max_payer_resources,
+      const uint128& trx_resource_limit
+   ) const;
    void add_pending_transaction(
       const multihash& id,
       const protocol::transaction& t,
@@ -135,6 +140,24 @@ std::vector< protocol::transaction > mempool_impl::get_pending_transactions( con
    return pending_transactions;
 }
 
+bool mempool_impl::check_pending_account_resources(
+   const account_type& payer,
+   const uint128& max_payer_resources,
+   const uint128& trx_resource_limit ) const
+{
+   auto& account_idx = _account_resources_idx.get< by_account >();
+   auto it = account_idx.find( payer );
+
+   if ( it == account_idx.end() )
+   {
+      return trx_resource_limit <= max_payer_resources;
+   }
+
+   int256 max_resource_delta = int256(max_payer_resources) - int256(it->max_resources);
+   int256 new_resources = int256(it->resources) + max_resource_delta - int256(trx_resource_limit);
+   return new_resources >= 0;
+}
+
 void mempool_impl::add_pending_transaction(
    const multihash& id,
    const protocol::transaction& t,
@@ -146,17 +169,17 @@ void mempool_impl::add_pending_transaction(
    {
       std::lock_guard< std::mutex > guard( _account_resources_mutex );
 
+      KOINOS_ASSERT(
+         check_pending_account_resources( payer, max_payer_resources, trx_resource_limit ),
+         pending_transaction_exceeds_resources,
+         "transaction would exceed maximum resources for account: ${a}", ("a", payer)
+      );
+
       auto& account_idx = _account_resources_idx.get< by_account >();
       auto it = account_idx.find( payer );
 
       if ( it == account_idx.end() )
       {
-         KOINOS_ASSERT(
-            trx_resource_limit <= max_payer_resources,
-            pending_transaction_exceeds_resources,
-            "transaction would exceed maximum resources for account: ${a}", ("a", payer)
-         );
-
          _account_resources_idx.insert( account_resources_object {
             .account = payer,
             .resources = max_payer_resources - trx_resource_limit,
@@ -168,12 +191,6 @@ void mempool_impl::add_pending_transaction(
       {
          int256 max_resource_delta = int256(max_payer_resources) - int256(it->max_resources);
          int256 new_resources = int256(it->resources) + max_resource_delta - int256(trx_resource_limit);
-
-         KOINOS_ASSERT(
-            new_resources >= 0,
-            pending_transaction_exceeds_resources,
-            "transaction would exceed resources for account: ${a}", ("a", payer)
-         );
 
          account_idx.modify( it, [&]( account_resources_object& aro )
          {
@@ -269,12 +286,20 @@ std::vector< protocol::transaction > mempool::get_pending_transactions( const mu
    return _my->get_pending_transactions( start, limit );
 }
 
+bool mempool::check_pending_account_resources(
+      const account_type& payer,
+      const uint128& max_payer_resources,
+      const uint128& trx_resource_limit ) const
+{
+   return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit );
+}
+
 void mempool::add_pending_transaction( const multihash& id,
       const protocol::transaction& t,
       block_height_type h,
-      account_type payer,
-      uint128 max_payer_resources,
-      uint128 trx_resource_limit )
+      const account_type& payer,
+      const uint128& max_payer_resources,
+      const uint128& trx_resource_limit )
 {
    _my->add_pending_transaction( id, t, h, payer, max_payer_resources, trx_resource_limit );
 }
