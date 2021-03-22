@@ -19,6 +19,9 @@
 namespace bpo = boost::program_options;
 namespace bfs = boost::filesystem;
 
+// If a transaction has not been included in ~1 hour, discard it
+#define TRX_EXPIRATION_DELTA koinos::block_height_type(360)
+
 int main( int argc, char** argv )
 {
    try
@@ -141,8 +144,33 @@ int main( int argc, char** argv )
          }
       );
 
-      // TODO: handle block broadcasts in #7
+      request_handler.add_msg_handler(
+         "koinos_event",
+         "koinos.block.accept",
+         false,
+         []( const std::string& content_type ) { return content_type == "application/json"; },
+         [&]( const std::string& msg )
+         {
+            try
+            {
+               koinos::broadcast::block_accepted block_accept;
+               koinos::pack::from_json( nlohmann::json::parse( msg ), block_accept );
+               for( const auto& trx : block_accept.block.transactions )
+               {
+                  mempool.remove_pending_transaction( trx.id );
+               }
 
+               if( block_accept.block.header.height > TRX_EXPIRATION_DELTA )
+               {
+                  mempool.prune( koinos::block_height_type( block_accept.block.header.height - TRX_EXPIRATION_DELTA ) );
+               }
+            }
+            catch( const std::exception& e )
+            {
+               LOG(warning) << "Exception when handling block accepted broadcast: " << e.what();
+            }
+         }
+      );
 
       LOG(info) << "Starting mempool...";
 
