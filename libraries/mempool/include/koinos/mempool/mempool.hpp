@@ -6,7 +6,7 @@
 #include <koinos/exception.hpp>
 #include <koinos/pack/classes.hpp>
 
-#define MAX_PENDING_TRANSACTION_REQUEST 100
+#define MAX_PENDING_TRANSACTION_REQUEST 500
 
 namespace koinos::mempool {
 
@@ -41,7 +41,7 @@ public:
       const uint128& trx_resource_limit );
 
    bool has_pending_transaction( const multihash& id );
-   std::vector< protocol::transaction > get_pending_transactions( const multihash& start = multihash(), std::size_t limit = 100 );
+   std::vector< protocol::transaction > get_pending_transactions( std::size_t limit = MAX_PENDING_TRANSACTION_REQUEST );
    void remove_pending_transaction( const multihash& id );
    void prune( block_height_type h );
    std::size_t payer_entries_size();

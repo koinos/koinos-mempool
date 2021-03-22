@@ -102,7 +102,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
    uint128 max_payer_resources;
    uint128 trx_resource_limit;
 
-   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST * 2 + 1; i++ )
+   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST + 1; i++ )
    {
       trx.active_data.make_mutable();
       trx.active_data->resource_limit = 10 * i;
@@ -114,29 +114,13 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
       mempool.add_pending_transaction( trx_id, trx, block_height_type( i ), payer, max_payer_resources, trx_resource_limit );
    }
 
-   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( multihash(), MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );
+   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );
 
-   auto pending_trxs = mempool.get_pending_transactions();
+   auto pending_trxs = mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST );
    BOOST_REQUIRE( pending_trxs.size() == MAX_PENDING_TRANSACTION_REQUEST );
-   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST; i++ )
+   for( uint64_t i = 0; i < pending_trxs.size(); i++ )
    {
       BOOST_CHECK_EQUAL( pending_trxs[i].active_data.get_const_native().resource_limit, 10 * i );
-   }
-
-   auto last_id = crypto::hash( CRYPTO_SHA2_256_ID, pending_trxs.rbegin()->active_data.get_const_native() );
-   pending_trxs = mempool.get_pending_transactions( last_id, MAX_PENDING_TRANSACTION_REQUEST / 2 );
-   BOOST_REQUIRE( pending_trxs.size() == MAX_PENDING_TRANSACTION_REQUEST / 2 );
-   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST / 2; i++ )
-   {
-      BOOST_CHECK_EQUAL( pending_trxs[i].active_data.get_const_native().resource_limit, 10 * (i + MAX_PENDING_TRANSACTION_REQUEST) );
-   }
-
-   last_id = crypto::hash( CRYPTO_SHA2_256_ID, pending_trxs.rbegin()->active_data.get_const_native() );
-   pending_trxs = mempool.get_pending_transactions( last_id );
-   BOOST_REQUIRE( pending_trxs.size() == (MAX_PENDING_TRANSACTION_REQUEST + 1) / 2 + 1 );
-   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST / 2; i++ )
-   {
-      BOOST_CHECK_EQUAL( pending_trxs[i].active_data.get_const_native().resource_limit, 10 * (i + MAX_PENDING_TRANSACTION_REQUEST + (MAX_PENDING_TRANSACTION_REQUEST + 1) / 2) );
    }
 }
 

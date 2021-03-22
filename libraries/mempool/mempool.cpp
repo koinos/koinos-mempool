@@ -73,7 +73,7 @@ public:
    virtual ~mempool_impl();
 
    bool has_pending_transaction( const multihash& id );
-   std::vector< protocol::transaction > get_pending_transactions( const multihash& start, std::size_t limit );
+   std::vector< protocol::transaction > get_pending_transactions( std::size_t limit );
    bool check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
@@ -110,7 +110,7 @@ bool mempool_impl::has_pending_transaction( const multihash& id )
    return it != id_idx.end();
 }
 
-std::vector< protocol::transaction > mempool_impl::get_pending_transactions( const multihash& start, std::size_t limit )
+std::vector< protocol::transaction > mempool_impl::get_pending_transactions( std::size_t limit )
 {
    KOINOS_ASSERT( limit <= MAX_PENDING_TRANSACTION_REQUEST, pending_transaction_request_overflow, "Requested too many pending transactions. Max: ${max}", ("max", MAX_PENDING_TRANSACTION_REQUEST) );
 
@@ -120,24 +120,11 @@ std::vector< protocol::transaction > mempool_impl::get_pending_transactions( con
    pending_transactions.reserve(limit);
 
    auto itr = _pending_transaction_idx.begin();
-   std::size_t count = 0;
 
-   if ( start.digest.size() )
-   {
-      const auto& trx_by_id_idx = _pending_transaction_idx.get< by_id >();
-      auto trx_by_id = trx_by_id_idx.find( start );
-      if ( trx_by_id != trx_by_id_idx.end() )
-      {
-         itr = _pending_transaction_idx.iterator_to( *trx_by_id );
-         ++itr;
-      }
-   }
-
-   while ( itr != _pending_transaction_idx.end() && count < limit )
+   while ( itr != _pending_transaction_idx.end() && pending_transactions.size() < limit )
    {
       pending_transactions.push_back( itr->transaction );
       ++itr;
-      count++;
    }
 
    return pending_transactions;
@@ -293,9 +280,9 @@ bool mempool::has_pending_transaction( const multihash& id )
    return _my->has_pending_transaction( id );
 }
 
-std::vector< protocol::transaction > mempool::get_pending_transactions( const multihash& start, std::size_t limit )
+std::vector< protocol::transaction > mempool::get_pending_transactions( std::size_t limit )
 {
-   return _my->get_pending_transactions( start, limit );
+   return _my->get_pending_transactions( limit );
 }
 
 bool mempool::check_pending_account_resources(
