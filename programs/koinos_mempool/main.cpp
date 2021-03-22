@@ -87,7 +87,9 @@ int main( int argc, char** argv )
                      },
                      [&]( const koinos::rpc::mempool::get_pending_transactions_request& p )
                      {
-                        // TODO: Hanlde request in #5
+                        resp = koinos::rpc::mempool::get_pending_transactions_response {
+                           .transactions = mempool.get_pending_transactions( p.limit )
+                        };
                      },
                      [&]( const auto& )
                      {
