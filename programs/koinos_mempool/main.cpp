@@ -14,6 +14,7 @@
 
 #include <csignal>
 #include <iostream>
+#include <mutex>
 
 namespace bpo = boost::program_options;
 namespace bfs = boost::filesystem;

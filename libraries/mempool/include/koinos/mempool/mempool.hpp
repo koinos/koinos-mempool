@@ -30,8 +30,7 @@ public:
    bool check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
-      const uint128& trx_resource_limit
-   ) const;
+      const uint128& trx_resource_limit );
 
    void add_pending_transaction(
       const multihash& id,

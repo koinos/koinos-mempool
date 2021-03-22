@@ -1,7 +1,6 @@
 #include <koinos/mempool/mempool.hpp>
 
 #include <functional>
-#include <mutex>
 #include <tuple>
 
 #include <boost/multi_index_container.hpp>
@@ -78,8 +77,7 @@ public:
    bool check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
-      const uint128& trx_resource_limit
-   ) const;
+      const uint128& trx_resource_limit );
    void add_pending_transaction(
       const multihash& id,
       const protocol::transaction& t,
@@ -91,6 +89,13 @@ public:
    void prune( block_height_type h );
    std::size_t payer_entries_size();
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
+
+private:
+   bool check_pending_account_resources_lockfree(
+         const account_type& payer,
+         const uint128& max_payer_resources,
+         const uint128& trx_resource_limit
+      );
 };
 
 mempool_impl::mempool_impl() {}
@@ -98,8 +103,6 @@ mempool_impl::~mempool_impl() = default;
 
 bool mempool_impl::has_pending_transaction( const multihash& id )
 {
-   std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
-
    auto& id_idx = _pending_transaction_idx.get< by_id >();
 
    auto it = id_idx.find( id );
@@ -140,10 +143,10 @@ std::vector< protocol::transaction > mempool_impl::get_pending_transactions( con
    return pending_transactions;
 }
 
-bool mempool_impl::check_pending_account_resources(
+bool mempool_impl::check_pending_account_resources_lockfree(
    const account_type& payer,
    const uint128& max_payer_resources,
-   const uint128& trx_resource_limit ) const
+   const uint128& trx_resource_limit )
 {
    auto& account_idx = _account_resources_idx.get< by_account >();
    auto it = account_idx.find( payer );
@@ -158,6 +161,15 @@ bool mempool_impl::check_pending_account_resources(
    return new_resources >= 0;
 }
 
+bool mempool_impl::check_pending_account_resources(
+   const account_type& payer,
+   const uint128& max_payer_resources,
+   const uint128& trx_resource_limit )
+{
+   std::lock_guard< std::mutex > guard( _account_resources_mutex );
+   return check_pending_account_resources_lockfree( payer, max_payer_resources, trx_resource_limit );
+}
+
 void mempool_impl::add_pending_transaction(
    const multihash& id,
    const protocol::transaction& t,
@@ -170,7 +182,7 @@ void mempool_impl::add_pending_transaction(
       std::lock_guard< std::mutex > guard( _account_resources_mutex );
 
       KOINOS_ASSERT(
-         check_pending_account_resources( payer, max_payer_resources, trx_resource_limit ),
+         check_pending_account_resources_lockfree( payer, max_payer_resources, trx_resource_limit ),
          pending_transaction_exceeds_resources,
          "transaction would exceed maximum resources for account: ${a}", ("a", payer)
       );
@@ -289,7 +301,7 @@ std::vector< protocol::transaction > mempool::get_pending_transactions( const mu
 bool mempool::check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
-      const uint128& trx_resource_limit ) const
+      const uint128& trx_resource_limit )
 {
    return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit );
 }
