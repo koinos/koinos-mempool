@@ -115,7 +115,33 @@ int main( int argc, char** argv )
          }
       );
 
-      // TODO: handle broadcasts in #6, #7
+      request_handler.add_msg_handler(
+         "koinos_event",
+         "koinos.transaction.accept",
+         false,
+         []( const std::string& content_type ) { return content_type == "application/json"; },
+         [&]( const std::string& msg )
+         {
+            try
+            {
+               koinos::broadcast::transaction_accepted trx_accept;
+               koinos::pack::from_json( nlohmann::json::parse( msg ), trx_accept );
+               mempool.add_pending_transaction(
+                  trx_accept.transaction,
+                  trx_accept.height,
+                  trx_accept.payer,
+                  trx_accept.max_payer_resources,
+                  trx_accept.trx_resource_limit
+               );
+            }
+            catch( const std::exception& e )
+            {
+               LOG(warning) << "Exception when handling transaction accepted broadcast: " << e.what();
+            }
+         }
+      );
+
+      // TODO: handle block broadcasts in #7
 
 
       LOG(info) << "Starting mempool...";

@@ -46,16 +46,16 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 
    protocol::transaction t1;
    t1.active_data->resource_limit = 10;
-   auto t1_id = sign( _key1, t1 );
+   t1.id = sign( _key1, t1 );
 
    BOOST_TEST_MESSAGE( "adding pending transaction" );
    auto payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
    auto max_payer_resources = koinos::uint128( 1000000000000 );
    auto trx_resource_limit = t1.active_data->resource_limit;
-   mempool.add_pending_transaction( t1_id, t1, block_height_type{ 1 }, payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( t1, block_height_type{ 1 }, payer, max_payer_resources, trx_resource_limit );
 
    BOOST_TEST_MESSAGE( "adding duplicate pending transaction" );
-   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t1_id, t1, block_height_type{ 2 }, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_insertion_failure );
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t1, block_height_type{ 2 }, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_insertion_failure );
 
    BOOST_TEST_MESSAGE( "checking pending transaction list" );
    {
@@ -63,24 +63,24 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
       BOOST_TEST_MESSAGE( "checking pending transactions size" );
       BOOST_REQUIRE_EQUAL( pending_txs.size(), 1 );
       BOOST_TEST_MESSAGE( "checking pending transaction id" );
-      BOOST_REQUIRE_EQUAL( crypto::hash( CRYPTO_SHA2_256_ID, pending_txs[0].active_data.get_const_native() ), t1_id );
+      BOOST_REQUIRE_EQUAL( crypto::hash( CRYPTO_SHA2_256_ID, pending_txs[0].active_data.get_const_native() ), t1.id );
    }
 
    BOOST_TEST_MESSAGE( "pending transaction existence check" );
-   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( t1_id ), true );
+   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( t1.id ), true );
 
    protocol::transaction t2;
    t2.active_data->resource_limit = 1000000000000;
-   auto t2_id = sign( _key1, t2 );
+   t2.id = sign( _key1, t2 );
 
    BOOST_TEST_MESSAGE( "adding pending transaction that exceeds accout resources" );
    payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = t2.active_data->resource_limit;
-   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2_id, t2, block_height_type{ 3 }, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_exceeds_resources );
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2, block_height_type{ 3 }, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_exceeds_resources );
 
    BOOST_TEST_MESSAGE( "removing pending transaction" );
-   mempool.remove_pending_transaction( t1_id );
+   mempool.remove_pending_transaction( t1.id );
 
    BOOST_TEST_MESSAGE( "checking pending transaction list" );
    {
@@ -90,7 +90,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    }
 
    BOOST_TEST_MESSAGE( "pending transaction existence check" );
-   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( t1_id ), false );
+   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( t1.id ), false );
 }
 
 BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
@@ -106,12 +106,12 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
    {
       trx.active_data.make_mutable();
       trx.active_data->resource_limit = 10 * i;
-      trx_id = sign( _key1, trx );
+      trx.id = sign( _key1, trx );
 
       payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
       max_payer_resources = 1000000000000;
       trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
-      mempool.add_pending_transaction( trx_id, trx, block_height_type( i ), payer, max_payer_resources, trx_resource_limit );
+      mempool.add_pending_transaction( trx, block_height_type( i ), payer, max_payer_resources, trx_resource_limit );
    }
 
    BOOST_REQUIRE_THROW( mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );
@@ -140,35 +140,35 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
    trx.active_data.make_mutable();
    trx.active_data->resource_limit = 1;
-   trx_id = sign( _key1, trx );
+   trx.id = sign( _key1, trx );
    payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
 
    trx.active_data.make_mutable();
    trx.active_data->resource_limit = 2;
-   trx_id = sign( _key2, trx );
+   trx.id = sign( _key2, trx );
    payer = pack::to_variable_blob( _key2.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
 
    trx.active_data.make_mutable();
    trx.active_data->resource_limit = 3;
-   trx_id = sign( _key1, trx );
+   trx.id = sign( _key1, trx );
    payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 2 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 2 ), payer, max_payer_resources, trx_resource_limit );
 
    trx.active_data.make_mutable();
    trx.active_data->resource_limit = 4;
-   trx_id = sign( _key3, trx );
+   trx.id = sign( _key3, trx );
    payer = pack::to_variable_blob( _key3.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 2 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 2 ), payer, max_payer_resources, trx_resource_limit );
 
    auto pending_trxs = mempool.get_pending_transactions();
    BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 3 );
@@ -202,13 +202,13 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
    trx.active_data.make_mutable();
    trx.active_data->resource_limit = 1000000000000;
-   trx_id = sign( _key1, trx );
+   trx.id = sign( _key1, trx );
 
    payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
 
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
 
    for ( unsigned int i = 2; i < 10; i++ )
    {
@@ -216,19 +216,19 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
       trx_resource_limit = i * 10;
 
       trx.active_data->resource_limit = trx_resource_limit;
-      trx_id = sign( _key1, trx );
+      trx.id = sign( _key1, trx );
 
-      mempool.add_pending_transaction( trx_id, trx, block_height_type( i ), payer, max_payer_resources, trx_resource_limit );
+      mempool.add_pending_transaction( trx, block_height_type( i ), payer, max_payer_resources, trx_resource_limit );
    }
 
    max_payer_resources = max_payer_resources + 99;
    trx_resource_limit = 100;
 
    trx.active_data->resource_limit = trx_resource_limit;
-   trx_id = sign( _key1, trx );
+   trx.id = sign( _key1, trx );
 
    BOOST_REQUIRE_THROW(
-      mempool.add_pending_transaction( trx_id, trx, block_height_type( 10 ), payer, max_payer_resources, trx_resource_limit ),
+      mempool.add_pending_transaction( trx, block_height_type( 10 ), payer, max_payer_resources, trx_resource_limit ),
       mempool::pending_transaction_exceeds_resources
    );
 
@@ -236,29 +236,29 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
    trx.active_data.make_mutable();
    trx.active_data->resource_limit = 999999999980;
-   trx_id = sign( _key2, trx );
+   trx.id = sign( _key2, trx );
 
    payer = pack::to_variable_blob( _key2.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = trx.active_data->resource_limit;
 
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 1 ), payer, max_payer_resources, trx_resource_limit );
 
    max_payer_resources = 999999999990;
    trx_resource_limit = 10;
 
    trx.active_data->resource_limit = trx_resource_limit;
-   trx_id = sign( _key2, trx );
+   trx.id = sign( _key2, trx );
 
-   mempool.add_pending_transaction( trx_id, trx, block_height_type( 2 ), payer, max_payer_resources, trx_resource_limit );
+   mempool.add_pending_transaction( trx, block_height_type( 2 ), payer, max_payer_resources, trx_resource_limit );
 
    trx_resource_limit = 1;
 
    trx.active_data->resource_limit = trx_resource_limit;
-   trx_id = sign( _key2, trx );
+   trx.id = sign( _key2, trx );
 
    BOOST_REQUIRE_THROW(
-      mempool.add_pending_transaction( trx_id, trx, block_height_type( 3 ), payer, max_payer_resources, trx_resource_limit ),
+      mempool.add_pending_transaction( trx, block_height_type( 3 ), payer, max_payer_resources, trx_resource_limit ),
       mempool::pending_transaction_exceeds_resources
    );
 }

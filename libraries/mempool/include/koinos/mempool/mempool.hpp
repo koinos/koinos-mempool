@@ -33,9 +33,8 @@ public:
       const uint128& trx_resource_limit );
 
    void add_pending_transaction(
-      const multihash& id,
-      const protocol::transaction& t,
-      block_height_type h,
+      const protocol::transaction& transaction,
+      block_height_type height,
       const account_type& payer,
       const uint128& max_payer_resources,
       const uint128& trx_resource_limit );
