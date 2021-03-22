@@ -42,7 +42,7 @@ BOOST_FIXTURE_TEST_SUITE( mempool_tests, mempool_fixture )
 
 BOOST_AUTO_TEST_CASE( mempool_basic_test )
 {
-   chain::mempool mempool;
+   mempool::mempool mempool;
 
    protocol::transaction t1;
    t1.active_data->resource_limit = 10;
@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    mempool.add_pending_transaction( t1_id, t1, block_height_type{ 1 }, payer, max_payer_resources, trx_resource_limit );
 
    BOOST_TEST_MESSAGE( "adding duplicate pending transaction" );
-   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t1_id, t1, block_height_type{ 2 }, payer, max_payer_resources, trx_resource_limit ), chain::pending_transaction_insertion_failure );
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t1_id, t1, block_height_type{ 2 }, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_insertion_failure );
 
    BOOST_TEST_MESSAGE( "checking pending transaction list" );
    {
@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    payer = pack::to_variable_blob( _key1.get_public_key().to_address() );
    max_payer_resources = 1000000000000;
    trx_resource_limit = t2.active_data->resource_limit;
-   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2_id, t2, block_height_type{ 3 }, payer, max_payer_resources, trx_resource_limit ), chain::pending_transaction_exceeds_resources );
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2_id, t2, block_height_type{ 3 }, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_exceeds_resources );
 
    BOOST_TEST_MESSAGE( "removing pending transaction" );
    mempool.remove_pending_transaction( t1_id );
@@ -95,10 +95,10 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 
 BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
 {
-   chain::mempool mempool;
+   mempool::mempool mempool;
    protocol::transaction trx;
    multihash trx_id;
-   chain::account_type payer;
+   mempool::account_type payer;
    uint128 max_payer_resources;
    uint128 trx_resource_limit;
 
@@ -114,7 +114,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
       mempool.add_pending_transaction( trx_id, trx, block_height_type( i ), payer, max_payer_resources, trx_resource_limit );
    }
 
-   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( multihash(), MAX_PENDING_TRANSACTION_REQUEST + 1 ), chain::pending_transaction_request_overflow );
+   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( multihash(), MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );
 
    auto pending_trxs = mempool.get_pending_transactions();
    BOOST_REQUIRE( pending_trxs.size() == MAX_PENDING_TRANSACTION_REQUEST );
@@ -147,10 +147,10 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    // Add payerC transaction to block 2
    // Prune 1, payerA trx2 and payerC trx exist
    // Prune 2, no trx exist
-   chain::mempool mempool;
+   mempool::mempool mempool;
    protocol::transaction trx;
    multihash trx_id;
-   chain::account_type payer;
+   mempool::account_type payer;
    uint128 max_payer_resources;
    uint128 trx_resource_limit;
 
@@ -207,10 +207,10 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
 BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 {
-   chain::mempool mempool;
+   mempool::mempool mempool;
    protocol::transaction trx;
    multihash trx_id;
-   chain::account_type payer;
+   mempool::account_type payer;
    uint128 max_payer_resources;
    uint128 trx_resource_limit;
 
@@ -245,7 +245,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
    BOOST_REQUIRE_THROW(
       mempool.add_pending_transaction( trx_id, trx, block_height_type( 10 ), payer, max_payer_resources, trx_resource_limit ),
-      chain::pending_transaction_exceeds_resources
+      mempool::pending_transaction_exceeds_resources
    );
 
    BOOST_TEST_MESSAGE( "lose max account resources" );
@@ -275,7 +275,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
    BOOST_REQUIRE_THROW(
       mempool.add_pending_transaction( trx_id, trx, block_height_type( 3 ), payer, max_payer_resources, trx_resource_limit ),
-      chain::pending_transaction_exceeds_resources
+      mempool::pending_transaction_exceeds_resources
    );
 }
 
