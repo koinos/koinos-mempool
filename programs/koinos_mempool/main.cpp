@@ -10,9 +10,11 @@
 
 #include <koinos/mq/client.hpp>
 #include <koinos/mq/request_handler.hpp>
+#include <koinos/pack/rt/binary.hpp>
 
 #include <csignal>
 #include <iostream>
+#include <mutex>
 
 namespace bpo = boost::program_options;
 namespace bfs = boost::filesystem;
@@ -54,10 +56,66 @@ int main( int argc, char** argv )
          return EXIT_FAILURE;
       }
 
-      auto request_handler = koinos::mq::request_handler();
-      // TODO: handle requests in #4, #5, #6, #7
-
       koinos::mempool::mempool mempool;
+
+      auto request_handler = koinos::mq::request_handler();
+      request_handler.add_msg_handler(
+         "koinos_rpc",
+         "koinos_rpc_mempool",
+         true,
+         []( const std::string& content_type ){ return content_type == "application/json"; },
+         [&]( const std::string& msg ) -> std::string
+         {
+            auto j = nlohmann::json::parse( msg );
+            koinos::rpc::mempool::mempool_rpc_request args;
+            koinos::pack::from_json( j, args );
+
+            koinos::rpc::mempool::mempool_rpc_response resp;
+            try
+            {
+               std::visit(
+                  koinos::overloaded {
+                     [&]( const koinos::rpc::mempool::check_pending_account_resources_request& p )
+                     {
+                        resp = koinos::rpc::mempool::check_pending_account_resources_response {
+                           .success = mempool.check_pending_account_resources(
+                              p.payer,
+                              p.max_payer_resources,
+                              p.trx_resource_limit
+                           )
+                        };
+                     },
+                     [&]( const koinos::rpc::mempool::get_pending_transactions_request& p )
+                     {
+                        // TODO: Hanlde request in #5
+                     },
+                     [&]( const auto& )
+                     {
+                        resp = koinos::rpc::mempool::mempool_error_response {
+                           .error_text = "Error: attempted to call unknown rpc"
+                        };
+                     }
+                  },
+                  args
+               );
+            }
+            catch( const koinos::exception& e )
+            {
+               resp = koinos::rpc::mempool::mempool_error_response {
+                  .error_text = e.get_message(),
+                  .error_data = e.get_stacktrace()
+               };
+            }
+
+            j.clear();
+            koinos::pack::to_json( j, resp );
+            return j.dump();
+         }
+      );
+
+      // TODO: handle broadcasts in #6, #7
+
+
       LOG(info) << "Starting mempool...";
 
       ec = request_handler.connect( amqp_url );

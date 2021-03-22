@@ -27,13 +27,19 @@ public:
    mempool();
    virtual ~mempool();
 
+   bool check_pending_account_resources(
+      const account_type& payer,
+      const uint128& max_payer_resources,
+      const uint128& trx_resource_limit );
+
    void add_pending_transaction(
       const multihash& id,
       const protocol::transaction& t,
       block_height_type h,
-      account_type payer,
-      uint128 max_payer_resources,
-      uint128 trx_resource_limit );
+      const account_type& payer,
+      const uint128& max_payer_resources,
+      const uint128& trx_resource_limit );
+
    bool has_pending_transaction( const multihash& id );
    std::vector< protocol::transaction > get_pending_transactions( const multihash& start = multihash(), std::size_t limit = 100 );
    void remove_pending_transaction( const multihash& id );
