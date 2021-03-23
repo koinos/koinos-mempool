@@ -62,11 +62,8 @@ int main( int argc, char** argv )
       koinos::mempool::mempool mempool;
 
       auto request_handler = koinos::mq::request_handler();
-      request_handler.add_msg_handler(
-         "koinos_rpc",
-         "koinos_rpc_mempool",
-         true,
-         []( const std::string& content_type ){ return content_type == "application/json"; },
+      request_handler.add_rpc_handler(
+         koinos::mq::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
             auto j = nlohmann::json::parse( msg );
@@ -118,11 +115,8 @@ int main( int argc, char** argv )
          }
       );
 
-      request_handler.add_msg_handler(
-         "koinos_event",
+      request_handler.add_broadcast_handler(
          "koinos.transaction.accept",
-         false,
-         []( const std::string& content_type ) { return content_type == "application/json"; },
          [&]( const std::string& msg )
          {
             try
@@ -144,11 +138,8 @@ int main( int argc, char** argv )
          }
       );
 
-      request_handler.add_msg_handler(
-         "koinos_event",
+      request_handler.add_broadcast_handler(
          "koinos.block.accept",
-         false,
-         []( const std::string& content_type ) { return content_type == "application/json"; },
          [&]( const std::string& msg )
          {
             try
