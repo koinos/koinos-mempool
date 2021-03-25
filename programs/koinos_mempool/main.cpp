@@ -50,18 +50,19 @@ int main( int argc, char** argv )
          koinos::initialize_logging( log_dir, "koinos_mempool_%3N.log" );
       }
 
+      LOG(info) << "Starting mempool...";
+
       auto amqp_url = args.at( "amqp" ).as< std::string >();
-      auto client = koinos::mq::client();
-      auto ec = client.connect( amqp_url );
+      auto request_handler = koinos::mq::request_handler();
+      auto ec = request_handler.connect( amqp_url );
       if ( ec != koinos::mq::error_code::success )
       {
-         LOG(error) << "Unable to connect amqp client";
+         LOG(error) << "Unable to connect amqp request handler";
          return EXIT_FAILURE;
       }
 
       koinos::mempool::mempool mempool;
 
-      auto request_handler = koinos::mq::request_handler();
       request_handler.add_rpc_handler(
          koinos::mq::service::mempool,
          [&]( const std::string& msg ) -> std::string
@@ -162,15 +163,6 @@ int main( int argc, char** argv )
             }
          }
       );
-
-      LOG(info) << "Starting mempool...";
-
-      ec = request_handler.connect( amqp_url );
-      if ( ec != koinos::mq::error_code::success )
-      {
-         LOG(error) << "Unable to connect amqp request handler";
-         return EXIT_FAILURE;
-      }
 
       request_handler.start();
 
