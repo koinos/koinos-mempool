@@ -32,7 +32,7 @@ int main( int argc, char** argv )
       options.add_options()
          (HELP_OPTION   ",h", "Print this help message and exit")
          (AMQP_OPTION   ",a", program_options::value< std::string >()->default_value( "amqp://guest:guest@localhost:5672/" ), "AMQP server URL")
-         (BASEDIR_OPTION",d", program_options::value< std::filesystem::path >()->default_value( get_default_base_directory() ), "Directory to store rotating logs");
+         (BASEDIR_OPTION",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -45,11 +45,11 @@ int main( int argc, char** argv )
 
       if( args.count( BASEDIR_OPTION ) )
       {
-         auto basedir = args[ BASEDIR_OPTION ].as< std::filesystem::path >();
+         auto basedir = filesystem::path{ args[ BASEDIR_OPTION ].as< std::string >() };
          if( basedir.is_relative() )
-            basedir = std::filesystem::current_path() / basedir;
+            basedir = filesystem::current_path() / basedir;
 
-         koinos::initialize_logging( boost::filesystem::path{ basedir.c_str() }, "koinos_mempool/koinos_mempool_%3N.log" );
+         koinos::initialize_logging( basedir, "mempool/%3N.log" );
       }
 
       LOG(info) << "Starting mempool...";
