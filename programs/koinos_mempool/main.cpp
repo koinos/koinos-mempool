@@ -1,5 +1,7 @@
-
-#include <koinos/mempool/mempool.hpp>
+#include <csignal>
+#include <filesystem>
+#include <iostream>
+#include <mutex>
 
 #include <boost/asio.hpp>
 #include <boost/asio/signal_set.hpp>
@@ -7,17 +9,17 @@
 #include <boost/program_options.hpp>
 
 #include <koinos/exception.hpp>
-
-#include <koinos/mq/client.hpp>
+#include <koinos/mempool/mempool.hpp>
 #include <koinos/mq/request_handler.hpp>
 #include <koinos/pack/rt/binary.hpp>
+#include <koinos/util.hpp>
 
-#include <csignal>
-#include <iostream>
-#include <mutex>
+#define HELP_OPTION    "help"
+#define AMQP_OPTION    "amqp"
+#define BASEDIR_OPTION "basedir"
 
-namespace bpo = boost::program_options;
-namespace bfs = boost::filesystem;
+using namespace boost;
+using namespace koinos;
 
 // If a transaction has not been included in ~1 hour, discard it
 #define TRX_EXPIRATION_DELTA koinos::block_height_type(360)
@@ -26,38 +28,38 @@ int main( int argc, char** argv )
 {
    try
    {
-      bpo::options_description options;
+      program_options::options_description options;
       options.add_options()
-         ("help,h", "Print this help message and exit.")
-         ("amqp,a", bpo::value< std::string >()->default_value( "amqp://guest:guest@localhost:5672/" ), "AMQP server URL")
-         ("log-dir,l", bpo::value< bfs::path >(), "Directory to store rotating logs");
+         (HELP_OPTION   ",h", "Print this help message and exit")
+         (AMQP_OPTION   ",a", program_options::value< std::string >()->default_value( "amqp://guest:guest@localhost:5672/" ), "AMQP server URL")
+         (BASEDIR_OPTION",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory");
 
-      bpo::variables_map args;
-      bpo::store( bpo::parse_command_line( argc, argv, options ), args );
+      program_options::variables_map args;
+      program_options::store( program_options::parse_command_line( argc, argv, options ), args );
 
-      if( args.count( "help" ) )
+      if( args.count( HELP_OPTION ) )
       {
-         std::cout << options << "\n";
+         std::cout << options << std::endl;
          return EXIT_FAILURE;
       }
 
-      if( args.count("log-dir") )
+      if( args.count( BASEDIR_OPTION ) )
       {
-         auto log_dir = args["log-dir"].as< bfs::path >();
-         if( log_dir.is_relative() )
-            log_dir = bfs::current_path() / log_dir;
+         auto basedir = filesystem::path{ args[ BASEDIR_OPTION ].as< std::string >() };
+         if( basedir.is_relative() )
+            basedir = filesystem::current_path() / basedir;
 
-         koinos::initialize_logging( log_dir, "koinos_mempool_%3N.log" );
+         koinos::initialize_logging( basedir, "mempool/%3N.log" );
       }
 
       LOG(info) << "Starting mempool...";
 
-      auto amqp_url = args.at( "amqp" ).as< std::string >();
+      auto amqp_url = args.at( AMQP_OPTION ).as< std::string >();
       auto request_handler = koinos::mq::request_handler();
       auto ec = request_handler.connect( amqp_url );
       if ( ec != koinos::mq::error_code::success )
       {
-         LOG(error) << "Unable to connect amqp request handler";
+         LOG(error) << "Unable to connect AMQP request handler";
          return EXIT_FAILURE;
       }
 
@@ -67,7 +69,7 @@ int main( int argc, char** argv )
          koinos::mq::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
-            auto j = nlohmann::json::parse( msg );
+            auto j = pack::json::parse( msg );
             koinos::rpc::mempool::mempool_rpc_request args;
             koinos::pack::from_json( j, args );
 
@@ -123,7 +125,7 @@ int main( int argc, char** argv )
             try
             {
                koinos::broadcast::transaction_accepted trx_accept;
-               koinos::pack::from_json( nlohmann::json::parse( msg ), trx_accept );
+               koinos::pack::from_json( pack::json::parse( msg ), trx_accept );
                mempool.add_pending_transaction(
                   trx_accept.transaction,
                   trx_accept.height,
@@ -187,7 +189,7 @@ int main( int argc, char** argv )
    }
    catch ( ... )
    {
-      LOG(fatal) << "unknown exception" << std::endl;
+      LOG(fatal) << "Unknown exception" << std::endl;
    }
 
    return EXIT_FAILURE;
