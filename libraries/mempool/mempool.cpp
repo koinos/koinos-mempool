@@ -68,21 +68,21 @@ class mempool_impl final
 {
 private:
    account_resources_index          _account_resources_idx;
-   std::mutex                       _account_resources_mutex;
+   mutable std::mutex               _account_resources_mutex;
 
    pending_transaction_index        _pending_transaction_idx;
-   std::mutex                       _pending_transaction_mutex;
+   mutable std::mutex               _pending_transaction_mutex;
 
 public:
    mempool_impl();
    virtual ~mempool_impl();
 
-   bool has_pending_transaction( const multihash& id );
+   bool has_pending_transaction( const multihash& id )const;
    std::vector< protocol::transaction > get_pending_transactions( std::size_t limit );
    bool check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
-      const uint128& trx_resource_limit );
+      const uint128& trx_resource_limit )const;
    void add_pending_transaction(
       const protocol::transaction& transaction,
       block_height_type height,
@@ -91,7 +91,7 @@ public:
       const uint128& trx_resource_limit );
    void remove_pending_transaction( const multihash& id );
    void prune( block_height_type h );
-   std::size_t payer_entries_size();
+   std::size_t payer_entries_size()const;
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
 
 private:
@@ -99,14 +99,15 @@ private:
          const account_type& payer,
          const uint128& max_payer_resources,
          const uint128& trx_resource_limit
-      );
+      )const;
 };
 
 mempool_impl::mempool_impl() {}
 mempool_impl::~mempool_impl() = default;
 
-bool mempool_impl::has_pending_transaction( const multihash& id )
+bool mempool_impl::has_pending_transaction( const multihash& id )const
 {
+   std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
    auto& id_idx = _pending_transaction_idx.get< by_id >();
 
    auto it = id_idx.find( id );
@@ -137,7 +138,7 @@ std::vector< protocol::transaction > mempool_impl::get_pending_transactions( std
 bool mempool_impl::check_pending_account_resources_lockfree(
    const account_type& payer,
    const uint128& max_payer_resources,
-   const uint128& trx_resource_limit )
+   const uint128& trx_resource_limit )const
 {
    auto& account_idx = _account_resources_idx.get< by_account >();
    auto it = account_idx.find( payer );
@@ -155,7 +156,7 @@ bool mempool_impl::check_pending_account_resources_lockfree(
 bool mempool_impl::check_pending_account_resources(
    const account_type& payer,
    const uint128& max_payer_resources,
-   const uint128& trx_resource_limit )
+   const uint128& trx_resource_limit )const
 {
    std::lock_guard< std::mutex > guard( _account_resources_mutex );
    return check_pending_account_resources_lockfree( payer, max_payer_resources, trx_resource_limit );
@@ -247,7 +248,7 @@ void mempool_impl::prune( block_height_type h )
    }
 }
 
-std::size_t mempool_impl::payer_entries_size()
+std::size_t mempool_impl::payer_entries_size()const
 {
    std::lock_guard< std::mutex > guard( _account_resources_mutex );
    return _account_resources_idx.size();
@@ -277,7 +278,7 @@ void mempool_impl::cleanup_account_resources( const pending_transaction_object& 
 mempool::mempool() : _my( std::make_unique< detail::mempool_impl >() ) {}
 mempool::~mempool() = default;
 
-bool mempool::has_pending_transaction( const multihash& id )
+bool mempool::has_pending_transaction( const multihash& id )const
 {
    return _my->has_pending_transaction( id );
 }
@@ -290,7 +291,7 @@ std::vector< protocol::transaction > mempool::get_pending_transactions( std::siz
 bool mempool::check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
-      const uint128& trx_resource_limit )
+      const uint128& trx_resource_limit )const
 {
    return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit );
 }
@@ -315,7 +316,7 @@ void mempool::prune( block_height_type h )
    _my->prune( h );
 }
 
-std::size_t mempool::payer_entries_size()
+std::size_t mempool::payer_entries_size()const
 {
    return _my->payer_entries_size();
 }

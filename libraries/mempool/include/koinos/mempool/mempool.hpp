@@ -30,7 +30,7 @@ public:
    bool check_pending_account_resources(
       const account_type& payer,
       const uint128& max_payer_resources,
-      const uint128& trx_resource_limit );
+      const uint128& trx_resource_limit )const;
 
    void add_pending_transaction(
       const protocol::transaction& transaction,
@@ -39,11 +39,11 @@ public:
       const uint128& max_payer_resources,
       const uint128& trx_resource_limit );
 
-   bool has_pending_transaction( const multihash& id );
+   bool has_pending_transaction( const multihash& id )const;
    std::vector< protocol::transaction > get_pending_transactions( std::size_t limit = MAX_PENDING_TRANSACTION_REQUEST );
    void remove_pending_transaction( const multihash& id );
    void prune( block_height_type h );
-   std::size_t payer_entries_size();
+   std::size_t payer_entries_size()const;
 };
 
 } // koinos::mempool
