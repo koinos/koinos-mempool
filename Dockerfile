@@ -29,4 +29,4 @@ RUN apk update && \
         musl \
         libstdc++
 COPY --from=builder /koinos-mempool/programs/koinos_mempool/koinos_mempool /usr/local/bin
-CMD  /usr/local/bin/koinos_mempool
+ENTRYPOINT [ "/usr/local/bin/koinos_mempool" ]
