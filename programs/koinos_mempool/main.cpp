@@ -69,13 +69,15 @@ int main( int argc, char** argv )
          koinos::mq::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
-            auto j = pack::json::parse( msg );
-            koinos::rpc::mempool::mempool_rpc_request args;
-            koinos::pack::from_json( j, args );
-
+            pack::json j;
             koinos::rpc::mempool::mempool_rpc_response resp;
+
             try
             {
+               j = pack::json::parse( msg );
+               koinos::rpc::mempool::mempool_rpc_request args;
+               koinos::pack::from_json( j, args );
+
                std::visit(
                   koinos::overloaded {
                      [&]( const koinos::rpc::mempool::check_pending_account_resources_request& p )
@@ -106,6 +108,10 @@ int main( int argc, char** argv )
             }
             catch( const koinos::exception& e )
             {
+               LOG(warning) << "Received bad message";
+               LOG(warning) << " -> " << e.get_message();
+               LOG(warning) << " -> " << e.get_stacktrace();
+
                resp = koinos::rpc::mempool::mempool_error_response {
                   .error_text = e.get_message(),
                   .error_data = e.get_stacktrace()
