@@ -24,6 +24,8 @@ using namespace koinos;
 // If a transaction has not been included in ~1 hour, discard it
 #define TRX_EXPIRATION_DELTA koinos::block_height_type(360)
 
+constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
+
 int main( int argc, char** argv )
 {
    try
@@ -54,13 +56,25 @@ int main( int argc, char** argv )
 
       LOG(info) << "Starting mempool...";
 
-      auto amqp_url = args.at( AMQP_OPTION ).as< std::string >();
       auto request_handler = koinos::mq::request_handler();
-      auto ec = request_handler.connect( amqp_url );
-      if ( ec != koinos::mq::error_code::success )
+      auto amqp_url = args[ AMQP_OPTION ].as< std::string >();
+      uint32_t amqp_sleep_ms = 1000;
+
+      LOG(info) << "Connecting AMQP request handler...";
+      while ( true )
       {
-         LOG(error) << "Unable to connect AMQP request handler";
-         return EXIT_FAILURE;
+         auto ec = request_handler.connect( amqp_url );
+         if ( ec == mq::error_code::success )
+         {
+            LOG(info) << "Connected request handler to AMQP server";
+            break;
+         }
+         else
+         {
+            LOG(info) << "Failed, trying again in " << amqp_sleep_ms << " ms" ;
+            std::this_thread::sleep_for( std::chrono::milliseconds( amqp_sleep_ms ) );
+            amqp_sleep_ms = std::min( amqp_sleep_ms * 2, MAX_AMQP_CONNECT_SLEEP_MS );
+         }
       }
 
       koinos::mempool::mempool mempool;
