@@ -5,7 +5,6 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/signal_set.hpp>
-#include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>
 
 #include <koinos/exception.hpp>
@@ -14,10 +13,11 @@
 #include <koinos/pack/rt/binary.hpp>
 #include <koinos/util.hpp>
 
-#define HELP_OPTION    "help"
-#define AMQP_OPTION    "amqp"
-#define BASEDIR_OPTION "basedir"
-
+#define HELP_OPTION        "help"
+#define AMQP_OPTION        "amqp"
+#define BASEDIR_OPTION     "basedir"
+#define LOG_FILTER_OPTION  "log-filter"
+#define INSTANCE_ID_OPTION "instance-id"
 using namespace boost;
 using namespace koinos;
 
@@ -34,7 +34,9 @@ int main( int argc, char** argv )
       options.add_options()
          (HELP_OPTION   ",h", "Print this help message and exit")
          (AMQP_OPTION   ",a", program_options::value< std::string >()->default_value( "amqp://guest:guest@localhost:5672/" ), "AMQP server URL")
-         (BASEDIR_OPTION",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory");
+         (BASEDIR_OPTION",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory")
+         (LOG_FILTER_OPTION ",l", program_options::value< std::string >()->default_value( "info" ), "The log filtering level")
+         (INSTANCE_ID_OPTION",i", program_options::value< std::string >()->default_value( random_alphanumeric( 5 ) ), "An ID that uniquely identifies the instance");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -45,14 +47,14 @@ int main( int argc, char** argv )
          return EXIT_FAILURE;
       }
 
-      if( args.count( BASEDIR_OPTION ) )
-      {
-         auto basedir = filesystem::path{ args[ BASEDIR_OPTION ].as< std::string >() };
-         if( basedir.is_relative() )
-            basedir = filesystem::current_path() / basedir;
+      auto basedir = std::filesystem::path{ args[ BASEDIR_OPTION ].as< std::string >() };
+      if( basedir.is_relative() )
+         basedir = std::filesystem::current_path() / basedir;
 
-         koinos::initialize_logging( basedir, "mempool/%3N.log" );
-      }
+      auto instance_id = args[ INSTANCE_ID_OPTION ].as< std::string >();
+      auto level       = args[ LOG_FILTER_OPTION ].as< std::string >();
+
+      koinos::initialize_logging( service::mempool, instance_id, level, basedir / service::mempool );
 
       LOG(info) << "Starting mempool...";
 
@@ -80,7 +82,7 @@ int main( int argc, char** argv )
       koinos::mempool::mempool mempool;
 
       request_handler.add_rpc_handler(
-         koinos::mq::service::mempool,
+         koinos::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
             pack::json j;
