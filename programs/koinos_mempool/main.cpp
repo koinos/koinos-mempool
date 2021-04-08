@@ -18,6 +18,7 @@
 #define BASEDIR_OPTION     "basedir"
 #define LOG_FILTER_OPTION  "log-filter"
 #define INSTANCE_ID_OPTION "instance-id"
+
 using namespace boost;
 using namespace koinos;
 
