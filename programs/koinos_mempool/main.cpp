@@ -99,6 +99,11 @@ int main( int argc, char** argv )
 
       koinos::initialize_logging( service::mempool, instance_id, log_level, basedir / service::mempool );
 
+      if ( config.IsNull() )
+      {
+         LOG(warning) << "Could not find config (config.yml or config.yaml expected), using default values";
+      }
+
       LOG(info) << "Starting mempool...";
 
       auto request_handler = koinos::mq::request_handler();
