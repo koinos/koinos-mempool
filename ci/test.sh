@@ -6,6 +6,7 @@ set -x
 if [ "$RUN_TYPE" = "test" ]; then
    cd $(dirname "$0")/../build/tests
    exec ctest -j3 --output-on-failure && ../libraries/vendor/mira/test/mira_test
+fi
 
 if ! [[ -z $BUILD_DOCKER ]]; then
    TAG="$TRAVIS_BRANCH"
