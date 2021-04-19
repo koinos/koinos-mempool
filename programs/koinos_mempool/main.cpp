@@ -107,24 +107,6 @@ int main( int argc, char** argv )
       LOG(info) << "Starting mempool...";
 
       auto request_handler = koinos::mq::request_handler();
-      uint32_t amqp_sleep_ms = 1000;
-
-      LOG(info) << "Connecting AMQP request handler...";
-      while ( true )
-      {
-         auto ec = request_handler.connect( amqp_url );
-         if ( ec == mq::error_code::success )
-         {
-            LOG(info) << "Connected request handler to AMQP server";
-            break;
-         }
-         else
-         {
-            LOG(info) << "Failed, trying again in " << amqp_sleep_ms << " ms" ;
-            std::this_thread::sleep_for( std::chrono::milliseconds( amqp_sleep_ms ) );
-            amqp_sleep_ms = std::min( amqp_sleep_ms * 2, MAX_AMQP_CONNECT_SLEEP_MS );
-         }
-      }
 
       koinos::mempool::mempool mempool;
 
@@ -169,7 +151,7 @@ int main( int argc, char** argv )
                   args
                );
             }
-            catch( const koinos::exception& e )
+            catch ( const koinos::exception& e )
             {
                LOG(warning) << "Received bad message";
                LOG(warning) << " -> " << e.get_message();
@@ -178,6 +160,14 @@ int main( int argc, char** argv )
                resp = koinos::rpc::mempool::mempool_error_response {
                   .error_text = e.get_message(),
                   .error_data = e.get_stacktrace()
+               };
+            }
+            catch ( const std::exception& e )
+            {
+               LOG(warning) << "Received bad message: " << e.what();
+
+               resp = koinos::rpc::mempool::mempool_error_response {
+                  .error_text = e.what()
                };
             }
 
@@ -234,6 +224,15 @@ int main( int argc, char** argv )
             }
          }
       );
+
+      LOG(info) << "Connecting AMQP request handler...";
+      auto ec = request_handler.connect( amqp_url );
+      if ( ec != mq::error_code::success )
+      {
+         LOG(info) << "Could not connect to AMQP server" ;
+         exit( EXIT_FAILURE );
+      }
+      LOG(info) << "Established connection to AMQP";
 
       request_handler.start();
 
