@@ -11,6 +11,5 @@ if ! [[ -z $BUILD_DOCKER ]]; then
    fi
 
    echo "$DOCKER_PASSWORD" | docker login -u $DOCKER_USERNAME --password-stdin
-   docker tag koinos-mempool koinos/koinos-mempool:$TAG
    docker push koinos/koinos-mempool:$TAG
 fi
