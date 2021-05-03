@@ -9,6 +9,9 @@ if [ "$RUN_TYPE" = "test" ]; then
 fi
 
 if ! [[ -z $BUILD_DOCKER ]]; then
+   eval "$(gimme 1.15.4)"
+   source ~/.gimme/envs/go1.15.4.env
+
    TAG="$TRAVIS_BRANCH"
    if [ "$TAG" = "master" ]; then
       TAG="latest"
