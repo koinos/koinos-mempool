@@ -6,6 +6,13 @@ hunter_config(Boost
       Boost_NO_BOOST_CMAKE=ON
 )
 
+hunter_config(Protobuf
+   VERSION ${HUNTER_Protobuf_VERSION}
+   CMAKE_ARGS
+      CMAKE_CXX_FLAGS=-fvisibility=hidden
+      CMAKE_C_FLAGS=-fvisibility=hidden
+)
+
 hunter_config(rabbitmq-c
    URL "https://github.com/alanxz/rabbitmq-c/archive/b8e5f43b082c5399bf1ee723c3fd3c19cecd843e.tar.gz"
    SHA1 "35d4ce3e4f0a5348de64bbed25c6e1df72da2594"
@@ -37,10 +44,8 @@ hunter_config(koinos_util
       BUILD_TESTS=OFF
 )
 
-hunter_config(koinos_types
-   GIT_SUBMODULE "libraries/types"
-   CMAKE_ARGS
-      BUILD_TESTS=OFF
+hunter_config(koinos_proto
+   GIT_SUBMODULE "libraries/proto"
 )
 
 hunter_config(koinos_exception

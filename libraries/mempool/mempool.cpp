@@ -3,6 +3,7 @@
 #include <functional>
 #include <tuple>
 
+#include <boost/multiprecision/cpp_int.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/multi_index/composite_key.hpp>
 #include <boost/multi_index/mem_fun.hpp>
@@ -15,18 +16,15 @@ namespace koinos::mempool {
 namespace detail {
 
 using namespace boost;
+using int128_t = boost::multiprecision::int128_t;
 
 struct pending_transaction_object
 {
+   crypto::multihash     id;
    protocol::transaction transaction;
    block_height_type     last_update;    //< Chain height at the time of submission
    account_type          payer;          //< Payer at the time of submission
-   uint128               resource_limit; //< Max resources at the time of submission
-
-   const multihash& id() const
-   {
-      return transaction.id;
-   }
+   uint64_t              resource_limit; //< Max resources at the time of submission
 };
 
 struct by_id;
@@ -37,7 +35,7 @@ using pending_transaction_index = multi_index_container<
    multi_index::indexed_by<
       multi_index::sequenced<>,
       multi_index::ordered_unique< multi_index::tag< by_id >,
-         multi_index::const_mem_fun< pending_transaction_object, const multihash&, &pending_transaction_object::id >
+         multi_index::member< pending_transaction_object, crypto::multihash, &pending_transaction_object::id >
       >,
       multi_index::ordered_non_unique< multi_index::tag< by_height >,
          multi_index::member< pending_transaction_object, block_height_type, &pending_transaction_object::last_update >
@@ -48,8 +46,8 @@ using pending_transaction_index = multi_index_container<
 struct account_resources_object
 {
    account_type      account;
-   uint128           resources;
-   uint128           max_resources;
+   uint64_t          resources;
+   uint64_t          max_resources;
    block_height_type last_update;
 };
 
@@ -77,19 +75,19 @@ public:
    mempool_impl();
    virtual ~mempool_impl();
 
-   bool has_pending_transaction( const multihash& id )const;
+   bool has_pending_transaction( const crypto::multihash& id )const;
    std::vector< protocol::transaction > get_pending_transactions( std::size_t limit );
    bool check_pending_account_resources(
       const account_type& payer,
-      const uint128& max_payer_resources,
-      const uint128& trx_resource_limit )const;
+      uint64_t max_payer_resources,
+      uint64_t trx_resource_limit )const;
    void add_pending_transaction(
       const protocol::transaction& transaction,
       block_height_type height,
       const account_type& payer,
-      const uint128& max_payer_resources,
-      const uint128& trx_resource_limit );
-   void remove_pending_transaction( const multihash& id );
+      uint64_t max_payer_resources,
+      uint64_t trx_resource_limit );
+   void remove_pending_transaction( const crypto::multihash& id );
    void prune( block_height_type h );
    std::size_t payer_entries_size()const;
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
@@ -97,15 +95,15 @@ public:
 private:
    bool check_pending_account_resources_lockfree(
          const account_type& payer,
-         const uint128& max_payer_resources,
-         const uint128& trx_resource_limit
+         uint64_t max_payer_resources,
+         uint64_t trx_resource_limit
       )const;
 };
 
 mempool_impl::mempool_impl() {}
 mempool_impl::~mempool_impl() = default;
 
-bool mempool_impl::has_pending_transaction( const multihash& id )const
+bool mempool_impl::has_pending_transaction( const crypto::multihash& id )const
 {
    std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
    auto& id_idx = _pending_transaction_idx.get< by_id >();
@@ -137,8 +135,8 @@ std::vector< protocol::transaction > mempool_impl::get_pending_transactions( std
 
 bool mempool_impl::check_pending_account_resources_lockfree(
    const account_type& payer,
-   const uint128& max_payer_resources,
-   const uint128& trx_resource_limit )const
+   uint64_t max_payer_resources,
+   uint64_t trx_resource_limit )const
 {
    auto& account_idx = _account_resources_idx.get< by_account >();
    auto it = account_idx.find( payer );
@@ -148,15 +146,15 @@ bool mempool_impl::check_pending_account_resources_lockfree(
       return trx_resource_limit <= max_payer_resources;
    }
 
-   int256 max_resource_delta = int256(max_payer_resources) - int256(it->max_resources);
-   int256 new_resources = int256(it->resources) + max_resource_delta - int256(trx_resource_limit);
+   int128_t max_resource_delta = int128_t(max_payer_resources) - int128_t(it->max_resources);
+   int128_t new_resources = int128_t(it->resources) + max_resource_delta - int128_t(trx_resource_limit);
    return new_resources >= 0;
 }
 
 bool mempool_impl::check_pending_account_resources(
    const account_type& payer,
-   const uint128& max_payer_resources,
-   const uint128& trx_resource_limit )const
+   uint64_t max_payer_resources,
+   uint64_t trx_resource_limit )const
 {
    std::lock_guard< std::mutex > guard( _account_resources_mutex );
    return check_pending_account_resources_lockfree( payer, max_payer_resources, trx_resource_limit );
@@ -166,8 +164,8 @@ void mempool_impl::add_pending_transaction(
    const protocol::transaction& transaction,
    block_height_type height,
    const account_type& payer,
-   const uint128& max_payer_resources,
-   const uint128& trx_resource_limit )
+   uint64_t max_payer_resources,
+   uint64_t trx_resource_limit )
 {
    {
       std::lock_guard< std::mutex > guard( _account_resources_mutex );
@@ -192,33 +190,36 @@ void mempool_impl::add_pending_transaction(
       }
       else
       {
-         int256 max_resource_delta = int256(max_payer_resources) - int256(it->max_resources);
-         int256 new_resources = int256(it->resources) + max_resource_delta - int256(trx_resource_limit);
+         int128_t max_resource_delta = int128_t(max_payer_resources) - int128_t(it->max_resources);
+         int128_t new_resources = int128_t(it->resources) + max_resource_delta - int128_t(trx_resource_limit);
 
          account_idx.modify( it, [&]( account_resources_object& aro )
          {
             aro.max_resources = max_payer_resources;
-            aro.resources = uint128(new_resources);
+            aro.resources = new_resources.convert_to< uint64_t >();
             aro.last_update = height;
          } );
       }
    }
 
    {
+      auto id = crypto::multihash::from( transaction.id() );
+
       std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
 
       auto rval = _pending_transaction_idx.emplace_back( pending_transaction_object {
+         .id             = id,
          .transaction    = transaction,
          .last_update    = height,
          .payer          = payer,
          .resource_limit = trx_resource_limit
       } );
 
-      KOINOS_ASSERT( rval.second, pending_transaction_insertion_failure, "failed to insert transaction with id: ${id}", ("id", transaction.id) );
+      KOINOS_ASSERT( rval.second, pending_transaction_insertion_failure, "failed to insert transaction with id: ${id}", ("id", id) );
    }
 }
 
-void mempool_impl::remove_pending_transaction( const multihash& id )
+void mempool_impl::remove_pending_transaction( const crypto::multihash& id )
 {
    std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
    std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
@@ -278,7 +279,7 @@ void mempool_impl::cleanup_account_resources( const pending_transaction_object& 
 mempool::mempool() : _my( std::make_unique< detail::mempool_impl >() ) {}
 mempool::~mempool() = default;
 
-bool mempool::has_pending_transaction( const multihash& id )const
+bool mempool::has_pending_transaction( const crypto::multihash& id )const
 {
    return _my->has_pending_transaction( id );
 }
@@ -290,8 +291,8 @@ std::vector< protocol::transaction > mempool::get_pending_transactions( std::siz
 
 bool mempool::check_pending_account_resources(
       const account_type& payer,
-      const uint128& max_payer_resources,
-      const uint128& trx_resource_limit )const
+      uint64_t max_payer_resources,
+      uint64_t trx_resource_limit )const
 {
    return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit );
 }
@@ -300,13 +301,13 @@ void mempool::add_pending_transaction(
    const protocol::transaction& transaction,
    block_height_type height,
    const account_type& payer,
-   const uint128& max_payer_resources,
-   const uint128& trx_resource_limit )
+   uint64_t max_payer_resources,
+   uint64_t trx_resource_limit )
 {
    _my->add_pending_transaction( transaction, height, payer, max_payer_resources, trx_resource_limit );
 }
 
-void mempool::remove_pending_transaction( const multihash& id )
+void mempool::remove_pending_transaction( const crypto::multihash& id )
 {
    _my->remove_pending_transaction( id );
 }
