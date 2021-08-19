@@ -176,6 +176,22 @@ void mempool_impl::add_pending_transaction(
          "transaction would exceed maximum resources for account: ${a}", ("a", payer)
       );
 
+      {
+         auto id = crypto::multihash::from( transaction.id() );
+
+         std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
+
+         auto rval = _pending_transaction_idx.emplace_back( pending_transaction_object {
+            .id             = id,
+            .transaction    = transaction,
+            .last_update    = height,
+            .payer          = payer,
+            .resource_limit = trx_resource_limit
+         } );
+
+         KOINOS_ASSERT( rval.second, pending_transaction_insertion_failure, "failed to insert transaction with id: ${id}", ("id", id) );
+      }
+
       auto& account_idx = _account_resources_idx.get< by_account >();
       auto it = account_idx.find( payer );
 
@@ -200,22 +216,6 @@ void mempool_impl::add_pending_transaction(
             aro.last_update = height;
          } );
       }
-   }
-
-   {
-      auto id = crypto::multihash::from( transaction.id() );
-
-      std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
-
-      auto rval = _pending_transaction_idx.emplace_back( pending_transaction_object {
-         .id             = id,
-         .transaction    = transaction,
-         .last_update    = height,
-         .payer          = payer,
-         .resource_limit = trx_resource_limit
-      } );
-
-      KOINOS_ASSERT( rval.second, pending_transaction_insertion_failure, "failed to insert transaction with id: ${id}", ("id", id) );
    }
 }
 

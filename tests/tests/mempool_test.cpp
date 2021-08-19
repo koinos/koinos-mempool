@@ -59,7 +59,8 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    BOOST_TEST_MESSAGE( "adding duplicate pending transaction" );
    BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t1, 2, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_insertion_failure );
 
-   // TODO: Check payer has not been charged
+   BOOST_TEST_MESSAGE( "checking payer was not charged for failed pending transaction" );
+   BOOST_REQUIRE( mempool.check_pending_account_resources( payer, max_payer_resources, max_payer_resources - t1.active().native().resource_limit() ) );
 
    BOOST_TEST_MESSAGE( "checking pending transaction list" );
    {
