@@ -115,15 +115,15 @@ int main( int argc, char** argv )
          koinos::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
-            koinos::rpc::mempool::mempool_rpc_request args;
-            koinos::rpc::mempool::mempool_rpc_response resp;
+            koinos::rpc::mempool::mempool_request args;
+            koinos::rpc::mempool::mempool_response resp;
 
             if ( args.ParseFromString( msg ) )
             {
                try {
                   switch( args.request_case() )
                   {
-                     case rpc::mempool::mempool_rpc_request::RequestCase::kCheckPendingAccountResources:
+                     case rpc::mempool::mempool_request::RequestCase::kCheckPendingAccountResources:
                      {
                         const auto& p = args.check_pending_account_resources();
                         resp.mutable_check_pending_account_resources()->set_success(
@@ -136,7 +136,7 @@ int main( int argc, char** argv )
 
                         break;
                      }
-                     case rpc::mempool::mempool_rpc_request::RequestCase::kGetPendingTransactions:
+                     case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactions:
                      {
                         const auto& p = args.get_pending_transactions();
                         auto transactions = mempool.get_pending_transactions( p.limit() );
@@ -148,29 +148,29 @@ int main( int argc, char** argv )
                         break;
                      }
                      default:
-                        resp.mutable_mempool_error()->set_message( "Error: attempted to call unknown rpc" );
+                        resp.mutable_error()->set_message( "Error: attempted to call unknown rpc" );
                   }
                }
                catch( const koinos::exception& e )
                {
-                  auto error = resp.mutable_mempool_error();
+                  auto error = resp.mutable_error();
                   error->set_message( e.what() );
                   error->set_data( e.get_stacktrace() );
                }
                catch( std::exception& e )
                {
-                  resp.mutable_mempool_error()->set_message( e.what() );
+                  resp.mutable_error()->set_message( e.what() );
                }
                catch( ... )
                {
                   LOG(error) << "Unexpected error while handling rpc: " << args.ShortDebugString();
-                  resp.mutable_mempool_error()->set_message( "Unexpected error while handling rpc" );
+                  resp.mutable_error()->set_message( "Unexpected error while handling rpc" );
                }
             }
             else
             {
                LOG(warning) << "Received bad message";
-               resp.mutable_mempool_error()->set_message( "Received bad message" );
+               resp.mutable_error()->set_message( "Received bad message" );
             }
 
             std::stringstream out;
