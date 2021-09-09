@@ -140,9 +140,10 @@ int main( int argc, char** argv )
                      {
                         const auto& p = args.get_pending_transactions();
                         auto transactions = mempool.get_pending_transactions( p.limit() );
+                        auto pending_trxs = resp.mutable_get_pending_transactions();
                         for( const auto& trx : transactions )
                         {
-                           *(resp.mutable_get_pending_transactions()->add_transactions()) = trx;
+                           pending_trxs->add_transactions()->CopyFrom( trx );
                         }
 
                         break;
