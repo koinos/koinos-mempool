@@ -1,5 +1,7 @@
 #include <koinos/mempool/mempool.hpp>
 
+#include <koinos/conversion.hpp>
+
 #include <functional>
 #include <tuple>
 
@@ -177,7 +179,7 @@ void mempool_impl::add_pending_transaction(
       );
 
       {
-         auto id = crypto::multihash::from( transaction.id() );
+         auto id = converter::to< crypto::multihash >( transaction.id() );
 
          std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
 

@@ -71,7 +71,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
       BOOST_TEST_MESSAGE( "checking pending transactions size" );
       BOOST_REQUIRE_EQUAL( pending_txs.size(), 1 );
       BOOST_TEST_MESSAGE( "checking pending transaction id" );
-      BOOST_REQUIRE_EQUAL( crypto::hash( crypto::multicodec::sha2_256, pending_txs[0].active() ).as< std::string >(), t1.id() );
+      BOOST_REQUIRE_EQUAL( converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, pending_txs[0].active() ) ), t1.id() );
    }
 
    BOOST_TEST_MESSAGE( "pending transaction existence check" );
@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    protocol::transaction t2;
    active.set_resource_limit( 1000000000000 );
    t2.set_active( converter::as< std::string >( active ) );
-   t2.set_id( sign( _key1, t2 ).as< std::string >() );
+   t2.set_id( converter::as< std::string >( sign( _key1, t2 ) ) );
 
    BOOST_TEST_MESSAGE( "adding pending transaction that exceeds accout resources" );
    payer = _key1.get_public_key().to_address();

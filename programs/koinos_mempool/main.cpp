@@ -10,6 +10,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/conversion.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/mempool/mempool.hpp>
 #include <koinos/mq/request_handler.hpp>
@@ -220,7 +221,7 @@ int main( int argc, char** argv )
             const auto& block = block_accept.block();
             for ( int i = 0; i < block.transactions_size(); ++i )
             {
-               mempool.remove_pending_transaction( crypto::multihash::from( block.transactions( i ).id() ) );
+               mempool.remove_pending_transaction( converter::to< crypto::multihash >( block.transactions( i ).id() ) );
             }
 
             if( block.header().height() > TRX_EXPIRATION_DELTA )
