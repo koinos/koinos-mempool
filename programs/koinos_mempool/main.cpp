@@ -147,6 +147,9 @@ int main( int argc, char** argv )
 
                         break;
                      }
+                     case rpc::mempool::mempool_request::RequestCase::kReserved:
+                        resp.mutable_reserved();
+                        break;
                      default:
                         resp.mutable_error()->set_message( "Error: attempted to call unknown rpc" );
                   }
