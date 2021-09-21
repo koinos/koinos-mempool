@@ -1,5 +1,7 @@
 #include <koinos/mempool/mempool.hpp>
 
+#include <koinos/conversion.hpp>
+
 #include <functional>
 #include <tuple>
 
