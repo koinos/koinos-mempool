@@ -11,6 +11,9 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
 
+#include <koinos/conversion.hpp>
+#include <koinos/util.hpp>
+
 namespace koinos::mempool {
 
 namespace detail {
@@ -173,11 +176,11 @@ void mempool_impl::add_pending_transaction(
       KOINOS_ASSERT(
          check_pending_account_resources_lockfree( payer, max_payer_resources, trx_resource_limit ),
          pending_transaction_exceeds_resources,
-         "transaction would exceed maximum resources for account: ${a}", ("a", payer)
+         "transaction would exceed maximum resources for account: ${a}", ("a", to_hex( payer ))
       );
 
       {
-         auto id = crypto::multihash::from( transaction.id() );
+         auto id = converter::to< crypto::multihash >( transaction.id() );
 
          std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
 
