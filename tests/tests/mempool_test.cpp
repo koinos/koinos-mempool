@@ -54,7 +54,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    t1.set_id( converter::as< std::string >( sign( _key1, t1 ) ) );
 
    BOOST_TEST_MESSAGE( "adding pending transaction" );
-   auto payer = _key1.get_public_key().to_address();
+   auto payer = _key1.get_public_key().to_address_bytes();
    uint64_t max_payer_resources = 1000000000000ull;
    auto trx_resource_limit = active.resource_limit();
    mempool.add_pending_transaction( t1, 1, payer, max_payer_resources, trx_resource_limit );
@@ -83,7 +83,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    t2.set_id( converter::as< std::string >( sign( _key1, t2 ) ) );
 
    BOOST_TEST_MESSAGE( "adding pending transaction that exceeds accout resources" );
-   payer = _key1.get_public_key().to_address();
+   payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = active.resource_limit();
    BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2, 3, payer, max_payer_resources, trx_resource_limit ), mempool::pending_transaction_exceeds_resources );
@@ -117,7 +117,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
       trx.set_active( converter::as< std::string >( active ) );
       trx.set_id( converter::as< std::string >( sign( _key1, trx ) ) );
 
-      payer = _key1.get_public_key().to_address();
+      payer = _key1.get_public_key().to_address_bytes();
       max_payer_resources = 1000000000000;
       trx_resource_limit = active.resource_limit();
       mempool.add_pending_transaction( trx, i, payer, max_payer_resources, trx_resource_limit );
@@ -152,7 +152,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    active.set_resource_limit( 1 );
    trx.set_active( converter::as< std::string >( active ) );
    trx.set_id( converter::as< std::string >( sign( _key1, trx ) ) );
-   payer = _key1.get_public_key().to_address();
+   payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = active.resource_limit();
    mempool.add_pending_transaction( trx, 1, payer, max_payer_resources, trx_resource_limit );
@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    active.set_resource_limit( 2 );
    trx.set_active( converter::as< std::string >( active ) );
    trx.set_id( converter::as< std::string >( sign( _key2, trx ) ) );
-   payer = _key2.get_public_key().to_address();
+   payer = _key2.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = active.resource_limit();
    mempool.add_pending_transaction( trx, 1, payer, max_payer_resources, trx_resource_limit );
@@ -168,7 +168,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    active.set_resource_limit( 3 );
    trx.set_active( converter::as< std::string >( active ) );
    trx.set_id( converter::as< std::string >( sign( _key1, trx ) ) );
-   payer = _key1.get_public_key().to_address();
+   payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = active.resource_limit();
    mempool.add_pending_transaction( trx, 2, payer, max_payer_resources, trx_resource_limit );
@@ -176,7 +176,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    active.set_resource_limit( 4 );
    trx.set_active( converter::as< std::string >( active ) );
    trx.set_id( converter::as< std::string >( sign( _key3, trx ) ) );
-   payer = _key3.get_public_key().to_address();
+   payer = _key3.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = active.resource_limit();
    mempool.add_pending_transaction( trx, 2, payer, max_payer_resources, trx_resource_limit );
@@ -221,7 +221,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
    trx.set_active( koinos::converter::as< std::string >( active ) );
    trx.set_id( koinos::converter::as< std::string >( sign( _key1, trx ) ) );
 
-   payer = _key1.get_public_key().to_address();
+   payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = active.resource_limit();
 
@@ -257,7 +257,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
    trx.set_active( koinos::converter::as< std::string >( active ) );
    trx.set_id( koinos::converter::as< std::string >( sign( _key2, trx ) ) );
 
-   payer = _key2.get_public_key().to_address();
+   payer = _key2.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = active.resource_limit();
 
