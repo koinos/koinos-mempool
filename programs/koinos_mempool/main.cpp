@@ -9,10 +9,12 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/conversion.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/mempool/mempool.hpp>
 #include <koinos/mq/request_handler.hpp>
-#include <koinos/pack/rt/binary.hpp>
+#include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util.hpp>
 
 #define HELP_OPTION        "help"
@@ -27,7 +29,7 @@ using namespace boost;
 using namespace koinos;
 
 // If a transaction has not been included in ~1 hour, discard it
-#define TRX_EXPIRATION_DELTA koinos::block_height_type(360)
+#define TRX_EXPIRATION_DELTA uint64_t(360)
 
 constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
 
@@ -114,66 +116,71 @@ int main( int argc, char** argv )
          koinos::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
-            pack::json j;
-            koinos::rpc::mempool::mempool_rpc_response resp;
+            koinos::rpc::mempool::mempool_request args;
+            koinos::rpc::mempool::mempool_response resp;
 
-            try
+            if ( args.ParseFromString( msg ) )
             {
-               j = pack::json::parse( msg );
-               koinos::rpc::mempool::mempool_rpc_request args;
-               koinos::pack::from_json( j, args );
-
-               std::visit(
-                  koinos::overloaded {
-                     [&]( const koinos::rpc::mempool::check_pending_account_resources_request& p )
+               try {
+                  switch( args.request_case() )
+                  {
+                     case rpc::mempool::mempool_request::RequestCase::kCheckPendingAccountResources:
                      {
-                        resp = koinos::rpc::mempool::check_pending_account_resources_response {
-                           .success = mempool.check_pending_account_resources(
-                              p.payer,
-                              p.max_payer_resources,
-                              p.trx_resource_limit
+                        const auto& p = args.check_pending_account_resources();
+                        resp.mutable_check_pending_account_resources()->set_success(
+                           mempool.check_pending_account_resources(
+                              p.payer(),
+                              p.max_payer_resources(),
+                              p.trx_resource_limit()
                            )
-                        };
-                     },
-                     [&]( const koinos::rpc::mempool::get_pending_transactions_request& p )
-                     {
-                        resp = koinos::rpc::mempool::get_pending_transactions_response {
-                           .transactions = mempool.get_pending_transactions( p.limit )
-                        };
-                     },
-                     [&]( const auto& )
-                     {
-                        resp = koinos::rpc::mempool::mempool_error_response {
-                           .error_text = "Error: attempted to call unknown rpc"
-                        };
+                        );
+
+                        break;
                      }
-                  },
-                  args
-               );
+                     case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactions:
+                     {
+                        const auto& p = args.get_pending_transactions();
+                        auto transactions = mempool.get_pending_transactions( p.limit() );
+                        auto pending_trxs = resp.mutable_get_pending_transactions();
+                        for( const auto& trx : transactions )
+                        {
+                           pending_trxs->add_transactions()->CopyFrom( trx );
+                        }
+
+                        break;
+                     }
+                     case rpc::mempool::mempool_request::RequestCase::kReserved:
+                        resp.mutable_reserved();
+                        break;
+                     default:
+                        resp.mutable_error()->set_message( "Error: attempted to call unknown rpc" );
+                  }
+               }
+               catch( const koinos::exception& e )
+               {
+                  auto error = resp.mutable_error();
+                  error->set_message( e.what() );
+                  error->set_data( e.get_stacktrace() );
+               }
+               catch( std::exception& e )
+               {
+                  resp.mutable_error()->set_message( e.what() );
+               }
+               catch( ... )
+               {
+                  LOG(error) << "Unexpected error while handling rpc: " << args.ShortDebugString();
+                  resp.mutable_error()->set_message( "Unexpected error while handling rpc" );
+               }
             }
-            catch ( const koinos::exception& e )
+            else
             {
                LOG(warning) << "Received bad message";
-               LOG(warning) << " -> " << e.get_message();
-               LOG(warning) << " -> " << e.get_stacktrace();
-
-               resp = koinos::rpc::mempool::mempool_error_response {
-                  .error_text = e.get_message(),
-                  .error_data = e.get_stacktrace()
-               };
-            }
-            catch ( const std::exception& e )
-            {
-               LOG(warning) << "Received bad message: " << e.what();
-
-               resp = koinos::rpc::mempool::mempool_error_response {
-                  .error_text = e.what()
-               };
+               resp.mutable_error()->set_message( "Received bad message" );
             }
 
-            j.clear();
-            koinos::pack::to_json( j, resp );
-            return j.dump();
+            std::stringstream out;
+            resp.SerializeToOstream( &out );
+            return out.str();
          }
       );
 
@@ -181,22 +188,21 @@ int main( int argc, char** argv )
          "koinos.transaction.accept",
          [&]( const std::string& msg )
          {
-            try
+            koinos::broadcast::transaction_accepted trx_accept;
+
+            if ( !trx_accept.ParseFromString( msg ) )
             {
-               koinos::broadcast::transaction_accepted trx_accept;
-               koinos::pack::from_json( pack::json::parse( msg ), trx_accept );
-               mempool.add_pending_transaction(
-                  trx_accept.transaction,
-                  trx_accept.height,
-                  trx_accept.payer,
-                  trx_accept.max_payer_resources,
-                  trx_accept.trx_resource_limit
-               );
+               LOG(warning) << "Could not parse transaction accepted broadcast";
+               return;
             }
-            catch( const std::exception& e )
-            {
-               LOG(warning) << "Exception when handling transaction accepted broadcast: " << e.what();
-            }
+
+            mempool.add_pending_transaction(
+               trx_accept.transaction(),
+               trx_accept.height(),
+               trx_accept.payer(),
+               trx_accept.max_payer_resources(),
+               trx_accept.trx_resource_limit()
+            );
          }
       );
 
@@ -204,23 +210,23 @@ int main( int argc, char** argv )
          "koinos.block.accept",
          [&]( const std::string& msg )
          {
-            try
-            {
-               koinos::broadcast::block_accepted block_accept;
-               koinos::pack::from_json( nlohmann::json::parse( msg ), block_accept );
-               for( const auto& trx : block_accept.block.transactions )
-               {
-                  mempool.remove_pending_transaction( trx.id );
-               }
+            koinos::broadcast::block_accepted block_accept;
 
-               if( block_accept.block.header.height > TRX_EXPIRATION_DELTA )
-               {
-                  mempool.prune( koinos::block_height_type( block_accept.block.header.height - TRX_EXPIRATION_DELTA ) );
-               }
-            }
-            catch( const std::exception& e )
+            if ( !block_accept.ParseFromString( msg ) )
             {
-               LOG(warning) << "Exception when handling block accepted broadcast: " << e.what();
+               LOG(warning) << "Could not parse block accepted broadcast";
+               return;
+            }
+
+            const auto& block = block_accept.block();
+            for ( int i = 0; i < block.transactions_size(); ++i )
+            {
+               mempool.remove_pending_transaction( converter::to< crypto::multihash >( block.transactions( i ).id() ) );
+            }
+
+            if( block.header().height() > TRX_EXPIRATION_DELTA )
+            {
+               mempool.prune( block.header().height() - TRX_EXPIRATION_DELTA );
             }
          }
       );
