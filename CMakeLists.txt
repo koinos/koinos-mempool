@@ -81,7 +81,8 @@ if(COVERAGE)
         "libraries/exception/*"
         "libraries/log/*"
         "libraries/proto/*"
-        "libraries/util/*")
+        "libraries/util/*"
+        "tests/*")
 endif()
 
 hunter_add_package(Boost COMPONENTS system log thread date_time filesystem chrono test program_options)
