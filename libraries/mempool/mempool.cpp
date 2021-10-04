@@ -222,6 +222,8 @@ void mempool_impl::add_pending_transaction(
          } );
       }
    }
+
+   LOG(info) << "Transaction added to mempool: " << to_hex( transaction.id() );
 }
 
 void mempool_impl::remove_pending_transaction( const crypto::multihash& id )
@@ -235,6 +237,7 @@ void mempool_impl::remove_pending_transaction( const crypto::multihash& id )
    if ( it != id_idx.end() )
    {
       cleanup_account_resources( *it );
+      LOG(info) << "Removing included transaction from mempool: " << to_hex( it->transaction.id() );
       id_idx.erase( it );
    }
 }
@@ -250,6 +253,7 @@ void mempool_impl::prune( block_height_type h )
    while( itr != by_block_idx.end() && itr->last_update <= h )
    {
       cleanup_account_resources( *itr );
+      LOG(info) << "Pruning transaction from mempool: " << to_hex( itr->transaction.id() );
       itr = by_block_idx.erase( itr );
    }
 }
