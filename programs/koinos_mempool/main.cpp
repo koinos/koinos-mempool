@@ -196,13 +196,20 @@ int main( int argc, char** argv )
                return;
             }
 
-            mempool.add_pending_transaction(
-               trx_accept.transaction(),
-               trx_accept.height(),
-               trx_accept.payer(),
-               trx_accept.max_payer_resources(),
-               trx_accept.trx_resource_limit()
-            );
+            try
+            {
+               mempool.add_pending_transaction(
+                  trx_accept.transaction(),
+                  trx_accept.height(),
+                  trx_accept.payer(),
+                  trx_accept.max_payer_resources(),
+                  trx_accept.trx_resource_limit()
+               );
+            }
+            catch ( const std::exception& e )
+            {
+               LOG(info) << "Could not add pending transaction: " << e.what();
+            }
          }
       );
 
@@ -218,15 +225,22 @@ int main( int argc, char** argv )
                return;
             }
 
-            const auto& block = block_accept.block();
-            for ( int i = 0; i < block.transactions_size(); ++i )
+            try
             {
-               mempool.remove_pending_transaction( converter::to< crypto::multihash >( block.transactions( i ).id() ) );
-            }
+               const auto& block = block_accept.block();
+               for ( int i = 0; i < block.transactions_size(); ++i )
+               {
+                  mempool.remove_pending_transaction( converter::to< crypto::multihash >( block.transactions( i ).id() ) );
+               }
 
-            if( block.header().height() > TRX_EXPIRATION_DELTA )
+               if ( block.header().height() > TRX_EXPIRATION_DELTA )
+               {
+                  mempool.prune( block.header().height() - TRX_EXPIRATION_DELTA );
+               }
+            }
+            catch ( const std::exception& e )
             {
-               mempool.prune( block.header().height() - TRX_EXPIRATION_DELTA );
+               LOG(info) << "Could not remove pending transaction: " << e.what();
             }
          }
       );
