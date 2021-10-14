@@ -31,8 +31,6 @@ using namespace koinos;
 // If a transaction has not been included in ~1 hour, discard it
 #define TRX_EXPIRATION_DELTA uint64_t(360)
 
-constexpr uint32_t MAX_AMQP_CONNECT_SLEEP_MS = 30000;
-
 template< typename T >
 T get_option(
    std::string key,
@@ -130,8 +128,8 @@ int main( int argc, char** argv )
                         resp.mutable_check_pending_account_resources()->set_success(
                            mempool.check_pending_account_resources(
                               p.payer(),
-                              p.max_payer_resources(),
-                              p.trx_resource_limit()
+                              p.max_payer_rc(),
+                              p.rc_limit()
                            )
                         );
 
@@ -144,7 +142,7 @@ int main( int argc, char** argv )
                         auto pending_trxs = resp.mutable_get_pending_transactions();
                         for( const auto& trx : transactions )
                         {
-                           pending_trxs->add_transactions()->CopyFrom( trx );
+                           pending_trxs->add_pending_transactions()->CopyFrom( trx );
                         }
 
                         break;
@@ -202,8 +200,11 @@ int main( int argc, char** argv )
                   trx_accept.transaction(),
                   trx_accept.height(),
                   trx_accept.payer(),
-                  trx_accept.max_payer_resources(),
-                  trx_accept.trx_resource_limit()
+                  trx_accept.max_payer_rc(),
+                  trx_accept.rc_limit(),
+                  trx_accept.disk_storage_used(),
+                  trx_accept.network_bandwidth_used(),
+                  trx_accept.compute_bandwidth_used()
                );
             }
             catch ( const std::exception& e )
