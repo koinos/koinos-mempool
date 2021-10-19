@@ -10,12 +10,14 @@
 #include <yaml-cpp/yaml.h>
 
 #include <koinos/broadcast/broadcast.pb.h>
-#include <koinos/conversion.hpp>
 #include <koinos/exception.hpp>
 #include <koinos/mempool/mempool.hpp>
 #include <koinos/mq/request_handler.hpp>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
-#include <koinos/util.hpp>
+#include <koinos/util/conversion.hpp>
+#include <koinos/util/options.hpp>
+#include <koinos/util/random.hpp>
+#include <koinos/util/services.hpp>
 
 #define HELP_OPTION        "help"
 #define BASEDIR_OPTION     "basedir"
@@ -31,26 +33,6 @@ using namespace koinos;
 // If a transaction has not been included in ~1 hour, discard it
 #define TRX_EXPIRATION_DELTA uint64_t(360)
 
-template< typename T >
-T get_option(
-   std::string key,
-   T default_value,
-   const program_options::variables_map& cli_args,
-   const YAML::Node& service_config = YAML::Node(),
-   const YAML::Node& global_config = YAML::Node() )
-{
-   if ( cli_args.count( key ) )
-      return cli_args[ key ].as< T >();
-
-   if ( service_config && service_config[ key ] )
-      return service_config[ key ].as< T >();
-
-   if ( global_config && global_config[ key ] )
-      return global_config[ key ].as< T >();
-
-   return std::move( default_value );
-}
-
 int main( int argc, char** argv )
 {
    try
@@ -58,7 +40,7 @@ int main( int argc, char** argv )
       program_options::options_description options;
       options.add_options()
          (HELP_OPTION       ",h", "Print this help message and exit")
-         (BASEDIR_OPTION    ",d", program_options::value< std::string >()->default_value( get_default_base_directory().string() ), "Koinos base directory")
+         (BASEDIR_OPTION    ",d", program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory")
          (AMQP_OPTION       ",a", program_options::value< std::string >(), "AMQP server URL")
          (LOG_LEVEL_OPTION  ",l", program_options::value< std::string >(), "The log filtering level")
          (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance");
@@ -90,14 +72,14 @@ int main( int argc, char** argv )
       {
          config = YAML::LoadFile( yaml_config );
          global_config = config[ "global" ];
-         mempool_config = config[ service::mempool ];
+         mempool_config = config[ util::service::mempool ];
       }
 
-      auto amqp_url    = get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
-      auto log_level   = get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
-      auto instance_id = get_option< std::string >( INSTANCE_ID_OPTION, random_alphanumeric( 5 ), args, mempool_config, global_config );
+      auto amqp_url    = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
+      auto log_level   = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
+      auto instance_id = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
 
-      koinos::initialize_logging( service::mempool, instance_id, log_level, basedir / service::mempool );
+      koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool );
 
       if ( config.IsNull() )
       {
@@ -111,7 +93,7 @@ int main( int argc, char** argv )
       koinos::mempool::mempool mempool;
 
       request_handler.add_rpc_handler(
-         koinos::service::mempool,
+         util::service::mempool,
          [&]( const std::string& msg ) -> std::string
          {
             koinos::rpc::mempool::mempool_request args;
@@ -231,7 +213,7 @@ int main( int argc, char** argv )
                const auto& block = block_accept.block();
                for ( int i = 0; i < block.transactions_size(); ++i )
                {
-                  mempool.remove_pending_transaction( converter::to< crypto::multihash >( block.transactions( i ).id() ) );
+                  mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( block.transactions( i ).id() ) );
                }
 
                if ( block.header().height() > TRX_EXPIRATION_DELTA )
