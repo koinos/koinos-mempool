@@ -2,10 +2,10 @@
 
 #include <koinos/mempool/mempool.hpp>
 
-#include <koinos/conversion.hpp>
 #include <koinos/crypto/elliptic.hpp>
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
+#include <koinos/util/conversion.hpp>
 
 #include <memory>
 
@@ -50,8 +50,8 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    protocol::transaction t1;
    protocol::active_transaction_data active;
    active.set_rc_limit( 10 );
-   t1.set_active( converter::as< std::string >( active ) );
-   t1.set_id( converter::as< std::string >( sign( _key1, t1 ) ) );
+   t1.set_active( util::converter::as< std::string >( active ) );
+   t1.set_id( util::converter::as< std::string >( sign( _key1, t1 ) ) );
 
    BOOST_TEST_MESSAGE( "adding pending transaction" );
    auto payer = _key1.get_public_key().to_address_bytes();
@@ -71,19 +71,19 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
       BOOST_TEST_MESSAGE( "checking pending transactions size" );
       BOOST_REQUIRE_EQUAL( pending_txs.size(), 1 );
       BOOST_TEST_MESSAGE( "checking pending transaction id" );
-      BOOST_REQUIRE_EQUAL( converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, pending_txs[0].transaction().active() ) ), t1.id() );
+      BOOST_REQUIRE_EQUAL( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, pending_txs[0].transaction().active() ) ), t1.id() );
       BOOST_REQUIRE_EQUAL( pending_txs[0].disk_storage_used(), 1 );
       BOOST_REQUIRE_EQUAL( pending_txs[0].network_bandwidth_used(), 2 );
       BOOST_REQUIRE_EQUAL( pending_txs[0].compute_bandwidth_used(), 3 );
    }
 
    BOOST_TEST_MESSAGE( "pending transaction existence check" );
-   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( converter::to< crypto::multihash >( t1.id() ) ), true );
+   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( util::converter::to< crypto::multihash >( t1.id() ) ), true );
 
    protocol::transaction t2;
    active.set_rc_limit( 1000000000000 );
-   t2.set_active( converter::as< std::string >( active ) );
-   t2.set_id( converter::as< std::string >( sign( _key1, t2 ) ) );
+   t2.set_active( util::converter::as< std::string >( active ) );
+   t2.set_id( util::converter::as< std::string >( sign( _key1, t2 ) ) );
 
    BOOST_TEST_MESSAGE( "adding pending transaction that exceeds accout resources" );
    payer = _key1.get_public_key().to_address_bytes();
@@ -92,7 +92,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2, 3, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 ), mempool::pending_transaction_exceeds_resources );
 
    BOOST_TEST_MESSAGE( "removing pending transaction" );
-   mempool.remove_pending_transaction( converter::to< crypto::multihash >( t1.id() ) );
+   mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( t1.id() ) );
 
    BOOST_TEST_MESSAGE( "checking pending transaction list" );
    {
@@ -102,7 +102,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    }
 
    BOOST_TEST_MESSAGE( "pending transaction existence check" );
-   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( converter::to< crypto::multihash >( t1.id() ) ), false );
+   BOOST_REQUIRE_EQUAL( mempool.has_pending_transaction( util::converter::to< crypto::multihash >( t1.id() ) ), false );
 }
 
 BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
@@ -117,8 +117,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
    {
       protocol::active_transaction_data active;
       active.set_rc_limit( 10 * i );
-      trx.set_active( converter::as< std::string >( active ) );
-      trx.set_id( converter::as< std::string >( sign( _key1, trx ) ) );
+      trx.set_active( util::converter::as< std::string >( active ) );
+      trx.set_id( util::converter::as< std::string >( sign( _key1, trx ) ) );
 
       payer = _key1.get_public_key().to_address_bytes();
       max_payer_resources = 1000000000000;
@@ -153,32 +153,32 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
    protocol::active_transaction_data active;
    active.set_rc_limit( 1 );
-   trx.set_active( converter::as< std::string >( active ) );
-   trx.set_id( converter::as< std::string >( sign( _key1, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key1, trx ) ) );
    payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = active.rc_limit();
    mempool.add_pending_transaction( trx, 1, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 );
 
    active.set_rc_limit( 2 );
-   trx.set_active( converter::as< std::string >( active ) );
-   trx.set_id( converter::as< std::string >( sign( _key2, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key2, trx ) ) );
    payer = _key2.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = active.rc_limit();
    mempool.add_pending_transaction( trx, 1, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 );
 
    active.set_rc_limit( 3 );
-   trx.set_active( converter::as< std::string >( active ) );
-   trx.set_id( converter::as< std::string >( sign( _key1, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key1, trx ) ) );
    payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = active.rc_limit();
    mempool.add_pending_transaction( trx, 2, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 );
 
    active.set_rc_limit( 4 );
-   trx.set_active( converter::as< std::string >( active ) );
-   trx.set_id( converter::as< std::string >( sign( _key3, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key3, trx ) ) );
    payer = _key3.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
    trx_resource_limit = trx_resource_limit = active.rc_limit();
@@ -221,8 +221,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
    protocol::active_transaction_data active;
    active.set_rc_limit( 1000000000000 );
-   trx.set_active( koinos::converter::as< std::string >( active ) );
-   trx.set_id( koinos::converter::as< std::string >( sign( _key1, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key1, trx ) ) );
 
    payer = _key1.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
@@ -236,8 +236,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
       trx_resource_limit = i * 10;
 
       active.set_rc_limit( trx_resource_limit );
-      trx.set_active( koinos::converter::as< std::string >( active ) );
-      trx.set_id( koinos::converter::as< std::string >( sign( _key1, trx ) ) );
+      trx.set_active( util::converter::as< std::string >( active ) );
+      trx.set_id( util::converter::as< std::string >( sign( _key1, trx ) ) );
 
       mempool.add_pending_transaction( trx, i, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 );
    }
@@ -246,8 +246,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
    trx_resource_limit = 100;
 
    active.set_rc_limit( trx_resource_limit );
-   trx.set_active( koinos::converter::as< std::string >( active ) );
-   trx.set_id( koinos::converter::as< std::string >( sign( _key1, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key1, trx ) ) );
 
    BOOST_REQUIRE_THROW(
       mempool.add_pending_transaction( trx, 10, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 ),
@@ -257,8 +257,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
    BOOST_TEST_MESSAGE( "lose max account resources" );
 
    active.set_rc_limit( 999999999980 );
-   trx.set_active( koinos::converter::as< std::string >( active ) );
-   trx.set_id( koinos::converter::as< std::string >( sign( _key2, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key2, trx ) ) );
 
    payer = _key2.get_public_key().to_address_bytes();
    max_payer_resources = 1000000000000;
@@ -270,16 +270,16 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
    trx_resource_limit = 10;
 
    active.set_rc_limit( trx_resource_limit );
-   trx.set_active( koinos::converter::as< std::string >( active ) );
-   trx.set_id( koinos::converter::as< std::string >( sign( _key2, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key2, trx ) ) );
 
    mempool.add_pending_transaction( trx, 2, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 );
 
    trx_resource_limit = 1;
 
    active.set_rc_limit( trx_resource_limit );
-   trx.set_active( koinos::converter::as< std::string >( active ) );
-   trx.set_id( koinos::converter::as< std::string >( sign( _key2, trx ) ) );
+   trx.set_active( util::converter::as< std::string >( active ) );
+   trx.set_id( util::converter::as< std::string >( sign( _key2, trx ) ) );
 
    BOOST_REQUIRE_THROW(
       mempool.add_pending_transaction( trx, 3, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 ),

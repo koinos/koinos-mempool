@@ -1,7 +1,5 @@
 #include <koinos/mempool/mempool.hpp>
 
-#include <koinos/conversion.hpp>
-
 #include <functional>
 #include <tuple>
 
@@ -13,8 +11,9 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index/sequenced_index.hpp>
 
-#include <koinos/conversion.hpp>
-#include <koinos/util.hpp>
+#include <koinos/util/base58.hpp>
+#include <koinos/util/conversion.hpp>
+#include <koinos/util/hex.hpp>
 
 namespace koinos::mempool {
 
@@ -193,11 +192,11 @@ void mempool_impl::add_pending_transaction(
       KOINOS_ASSERT(
          check_pending_account_resources_lockfree( payer, max_payer_rc, rc_limit ),
          pending_transaction_exceeds_resources,
-         "transaction would exceed maximum resources for account: ${a}", ("a", to_hex( payer ))
+         "transaction would exceed maximum resources for account: ${a}", ("a", util::encode_base58( util::converter::as< std::vector< std::byte > >( payer )))
       );
 
       {
-         auto id = converter::to< crypto::multihash >( transaction.id() );
+         auto id = util::converter::to< crypto::multihash >( transaction.id() );
 
          std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
 
@@ -241,7 +240,7 @@ void mempool_impl::add_pending_transaction(
       }
    }
 
-   LOG(info) << "Transaction added to mempool: " << to_hex( transaction.id() );
+   LOG(info) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
 }
 
 void mempool_impl::remove_pending_transaction( const crypto::multihash& id )
@@ -255,7 +254,7 @@ void mempool_impl::remove_pending_transaction( const crypto::multihash& id )
    if ( it != id_idx.end() )
    {
       cleanup_account_resources( *it );
-      LOG(info) << "Removing included transaction from mempool: " << to_hex( it->transaction.id() );
+      LOG(info) << "Removing included transaction from mempool: " << util::to_hex( it->transaction.id() );
       id_idx.erase( it );
    }
 }
@@ -271,7 +270,7 @@ void mempool_impl::prune( block_height_type h )
    while( itr != by_block_idx.end() && itr->last_update <= h )
    {
       cleanup_account_resources( *itr );
-      LOG(info) << "Pruning transaction from mempool: " << to_hex( itr->transaction.id() );
+      LOG(info) << "Pruning transaction from mempool: " << util::to_hex( itr->transaction.id() );
       itr = by_block_idx.erase( itr );
    }
 }
