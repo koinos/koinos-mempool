@@ -26,6 +26,7 @@
 #define LOG_LEVEL_OPTION   "log-level"
 #define LOG_LEVEL_DEFAULT  "info"
 #define INSTANCE_ID_OPTION "instance-id"
+#define JOBS_OPTION        "jobs"
 
 using namespace boost;
 using namespace koinos;
@@ -43,7 +44,8 @@ int main( int argc, char** argv )
          (BASEDIR_OPTION    ",d", program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory")
          (AMQP_OPTION       ",a", program_options::value< std::string >(), "AMQP server URL")
          (LOG_LEVEL_OPTION  ",l", program_options::value< std::string >(), "The log filtering level")
-         (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance");
+         (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
+         (JOBS_OPTION       ",j", program_options::value< uint64_t >(), "The number of worker jobs");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -78,8 +80,11 @@ int main( int argc, char** argv )
       auto amqp_url    = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
       auto log_level   = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
       auto instance_id = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
+      auto jobs        = util::get_option< uint64_t >( JOBS_OPTION, std::thread::hardware_concurrency(), args, mempool_config, global_config );
 
       koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool );
+
+      KOINOS_ASSERT( jobs > 0, koinos::exception, "jobs must be greater than 0" );
 
       if ( config.IsNull() )
       {
@@ -87,8 +92,11 @@ int main( int argc, char** argv )
       }
 
       LOG(info) << "Starting mempool...";
+      LOG(info) << "Number of jobs: " << jobs;
 
-      auto request_handler = koinos::mq::request_handler();
+      boost::asio::io_context main_context, work_context;
+
+      auto request_handler = koinos::mq::request_handler( work_context );
 
       koinos::mempool::mempool mempool;
 
@@ -229,26 +237,26 @@ int main( int argc, char** argv )
       );
 
       LOG(info) << "Connecting AMQP request handler...";
-      auto ec = request_handler.connect( amqp_url );
-      if ( ec != mq::error_code::success )
-      {
-         LOG(info) << "Could not connect to AMQP server" ;
-         exit( EXIT_FAILURE );
-      }
+      request_handler.connect( amqp_url );
       LOG(info) << "Established connection to AMQP";
 
-      request_handler.start();
-
-      boost::asio::io_service io_service;
-      boost::asio::signal_set signals( io_service, SIGINT, SIGTERM );
+      boost::asio::signal_set signals( main_context, SIGINT, SIGTERM );
 
       signals.async_wait( [&]( const boost::system::error_code& err, int num )
       {
          LOG(info) << "Caught signal, shutting down...";
-         request_handler.stop();
+         main_context.stop();
+         work_context.stop();
       } );
 
-      io_service.run();
+      std::vector< std::thread > threads;
+      for ( std::size_t i = 0; i < jobs; i++ )
+         threads.emplace_back( [&]() { work_context.run(); } );
+
+      main_context.run();
+
+      for ( auto& t : threads )
+         t.join();
    }
    catch ( const boost::exception& e )
    {
