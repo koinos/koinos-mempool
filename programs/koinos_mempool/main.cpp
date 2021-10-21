@@ -92,6 +92,7 @@ int main( int argc, char** argv )
       }
 
       LOG(info) << "Starting mempool...";
+      LOG(info) << "Number of jobs: " << jobs;
 
       boost::asio::io_context main_context, work_context;
 
