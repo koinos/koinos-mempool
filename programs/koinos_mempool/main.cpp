@@ -31,8 +31,10 @@
 using namespace boost;
 using namespace koinos;
 
-// If a transaction has not been included in ~1 hour, discard it
-#define TRX_EXPIRATION_DELTA uint64_t(360)
+namespace constants {
+   // If a transaction has not been included in ~1 hour, discard it
+   constexpr uint64_t trx_expiration_delta = 360;
+}
 
 int main( int argc, char** argv )
 {
@@ -224,9 +226,9 @@ int main( int argc, char** argv )
                   mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( block.transactions( i ).id() ) );
                }
 
-               if ( block.header().height() > TRX_EXPIRATION_DELTA )
+               if ( block.header().height() > constants::trx_expiration_delta )
                {
-                  mempool.prune( block.header().height() - TRX_EXPIRATION_DELTA );
+                  mempool.prune( block.header().height() - constants::trx_expiration_delta );
                }
             }
             catch ( const std::exception& e )
@@ -245,8 +247,14 @@ int main( int argc, char** argv )
       signals.async_wait( [&]( const boost::system::error_code& err, int num )
       {
          LOG(info) << "Caught signal, shutting down...";
-         main_context.stop();
-         work_context.stop();
+         boost::asio::post(
+            main_context,
+            [&]()
+            {
+               work_context.stop();
+               main_context.stop();
+            }
+         );
       } );
 
       std::vector< std::thread > threads;
