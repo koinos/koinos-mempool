@@ -191,12 +191,12 @@ int main( int argc, char** argv )
                mempool.add_pending_transaction(
                   trx_accept.transaction(),
                   trx_accept.height(),
-                  trx_accept.payer(),
-                  trx_accept.max_payer_rc(),
-                  trx_accept.rc_limit(),
-                  trx_accept.disk_storage_used(),
-                  trx_accept.network_bandwidth_used(),
-                  trx_accept.compute_bandwidth_used()
+                  trx_accept.receipt().payer(),
+                  trx_accept.receipt().max_payer_rc(),
+                  trx_accept.receipt().rc_limit(),
+                  trx_accept.receipt().disk_storage_used(),
+                  trx_accept.receipt().network_bandwidth_used(),
+                  trx_accept.receipt().compute_bandwidth_used()
                );
             }
             catch ( const std::exception& e )
