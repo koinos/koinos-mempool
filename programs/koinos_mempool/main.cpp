@@ -207,6 +207,22 @@ int main( int argc, char** argv )
       );
 
       request_handler.add_broadcast_handler(
+         "koinos.transaction.fail",
+         [&]( const std::string& msg )
+         {
+            koinos::broadcast::pending_transaction_failed trx_fail;
+
+            if ( !trx_fail.ParseFromString( msg ) )
+            {
+               LOG(warning) << "Could not parse transaction accepted broadcast";
+               return;
+            }
+
+            mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( trx_fail.transaction().id() ) );
+         }
+      );
+
+      request_handler.add_broadcast_handler(
          "koinos.block.accept",
          [&]( const std::string& msg )
          {
