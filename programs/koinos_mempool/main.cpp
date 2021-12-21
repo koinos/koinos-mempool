@@ -210,7 +210,7 @@ int main( int argc, char** argv )
          "koinos.transaction.fail",
          [&]( const std::string& msg )
          {
-            koinos::broadcast::pending_transaction_failed trx_fail;
+            koinos::broadcast::transaction_failed trx_fail;
 
             if ( !trx_fail.ParseFromString( msg ) )
             {
@@ -218,7 +218,7 @@ int main( int argc, char** argv )
                return;
             }
 
-            mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( trx_fail.transaction().id() ) );
+            mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( trx_fail.id() ) );
          }
       );
 
