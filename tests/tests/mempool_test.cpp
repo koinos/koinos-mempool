@@ -32,7 +32,7 @@ struct mempool_fixture
       std::string sig_str;
       sig_str.resize( signature.size() );
       std::transform( signature.begin(), signature.end(), sig_str.begin(), []( std::byte b ) { return char( b ); } );
-      t.set_signature( std::move( sig_str ) );
+      t.add_signatures( std::move( sig_str ) );
       return digest;
    }
 
