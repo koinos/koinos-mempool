@@ -1,3 +1,4 @@
+#include <atomic>
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -27,6 +28,10 @@
 #define LOG_LEVEL_DEFAULT  "info"
 #define INSTANCE_ID_OPTION "instance-id"
 #define JOBS_OPTION        "jobs"
+#define JOBS_DEFAULT       uint64_t( 4 )
+
+KOINOS_DECLARE_EXCEPTION( service_exception );
+KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
 
 using namespace boost;
 using namespace koinos;
@@ -38,6 +43,10 @@ namespace constants {
 
 int main( int argc, char** argv )
 {
+   std::atomic< bool > stopped = false;
+   int retcode = EXIT_SUCCESS;
+   std::vector< std::thread > threads;
+
    try
    {
       program_options::options_description options;
@@ -52,14 +61,14 @@ int main( int argc, char** argv )
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
 
-      if( args.count( HELP_OPTION ) )
+      if ( args.count( HELP_OPTION ) )
       {
          std::cout << options << std::endl;
-         return EXIT_FAILURE;
+         return EXIT_SUCCESS;
       }
 
       auto basedir = std::filesystem::path{ args[ BASEDIR_OPTION ].as< std::string >() };
-      if( basedir.is_relative() )
+      if ( basedir.is_relative() )
          basedir = std::filesystem::current_path() / basedir;
 
       YAML::Node config;
@@ -82,11 +91,11 @@ int main( int argc, char** argv )
       auto amqp_url    = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
       auto log_level   = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
       auto instance_id = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
-      auto jobs        = util::get_option< uint64_t >( JOBS_OPTION, std::thread::hardware_concurrency(), args, mempool_config, global_config );
+      auto jobs        = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
 
-      koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool );
+      koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool / "logs" );
 
-      KOINOS_ASSERT( jobs > 0, koinos::exception, "jobs must be greater than 0" );
+      KOINOS_ASSERT( jobs > 2, invalid_argument, "jobs must be greater than 2" );
 
       if ( config.IsNull() )
       {
@@ -96,9 +105,27 @@ int main( int argc, char** argv )
       LOG(info) << "Starting mempool...";
       LOG(info) << "Number of jobs: " << jobs;
 
-      boost::asio::io_context main_context, work_context;
+      boost::asio::io_context main_ioc, server_ioc;
 
-      auto request_handler = koinos::mq::request_handler( work_context );
+      auto request_handler = koinos::mq::request_handler( server_ioc );
+
+      boost::asio::signal_set signals( server_ioc );
+      signals.add( SIGINT );
+      signals.add( SIGTERM );
+#if defined( SIGQUIT )
+      signals.add( SIGQUIT );
+#endif
+
+      signals.async_wait( [&]( const boost::system::error_code& err, int num )
+      {
+         LOG(info) << "Caught signal, shutting down...";
+         stopped = true;
+         main_ioc.stop();
+         server_ioc.stop();
+      } );
+
+      for ( std::size_t i = 0; i < jobs; i++ )
+         threads.emplace_back( [&]() { server_ioc.run(); } );
 
       koinos::mempool::mempool mempool;
 
@@ -258,42 +285,42 @@ int main( int argc, char** argv )
       request_handler.connect( amqp_url );
       LOG(info) << "Established connection to AMQP";
 
-      boost::asio::signal_set signals( main_context, SIGINT, SIGTERM );
-
-      signals.async_wait( [&]( const boost::system::error_code& err, int num )
+      auto work = asio::make_work_guard( main_ioc );
+      main_ioc.run();
+   }
+   catch ( const invalid_argument& e )
+   {
+      LOG(error) << "Invalid argument: " << e.what();
+      retcode = EXIT_FAILURE;
+   }
+   catch ( const koinos::exception& e )
+   {
+      if ( !stopped )
       {
-         LOG(info) << "Caught signal, shutting down...";
-         boost::asio::post(
-            main_context,
-            [&]()
-            {
-               work_context.stop();
-               main_context.stop();
-            }
-         );
-      } );
-
-      std::vector< std::thread > threads;
-      for ( std::size_t i = 0; i < jobs; i++ )
-         threads.emplace_back( [&]() { work_context.run(); } );
-
-      main_context.run();
-
-      for ( auto& t : threads )
-         t.join();
+         LOG(fatal) << "An unexpected error has occurred: " << e.what();
+         retcode = EXIT_FAILURE;
+      }
    }
    catch ( const boost::exception& e )
    {
-      LOG(fatal) << boost::diagnostic_information( e ) << std::endl;
+      LOG(fatal) << "An unexpected error has occurred: " << boost::diagnostic_information( e );
+      retcode = EXIT_FAILURE;
    }
    catch ( const std::exception& e )
    {
-      LOG(fatal) << e.what() << std::endl;
+      LOG(fatal) << "An unexpected error has occurred: " << e.what();
+      retcode = EXIT_FAILURE;
    }
    catch ( ... )
    {
-      LOG(fatal) << "Unknown exception" << std::endl;
+      LOG(fatal) << "An unexpected error has occurred";
+      retcode = EXIT_FAILURE;
    }
 
-   return EXIT_FAILURE;
+   for ( auto& t : threads )
+      t.join();
+
+   LOG(info) << "Shut down gracefully";
+
+   return retcode;
 }
