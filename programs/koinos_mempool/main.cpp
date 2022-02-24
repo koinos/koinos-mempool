@@ -94,7 +94,7 @@ int main( int argc, char** argv )
       auto amqp_url    = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
       auto log_level   = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
       auto instance_id = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
-      auto jobs        = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, chain_config, global_config );
+      auto jobs        = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
 
       koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool / "logs" );
 
