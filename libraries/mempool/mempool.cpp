@@ -97,7 +97,7 @@ public:
       uint64_t disk_storaged_used,
       uint64_t network_bandwidth_used,
       uint64_t compute_bandwidth_used );
-   void remove_pending_transaction( const crypto::multihash& id );
+   void remove_pending_transactions( const std::vector< crypto::multihash >& ids );
    void prune( block_height_type h );
    std::size_t payer_entries_size() const;
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
@@ -243,19 +243,22 @@ void mempool_impl::add_pending_transaction(
    LOG(info) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
 }
 
-void mempool_impl::remove_pending_transaction( const crypto::multihash& id )
+void mempool_impl::remove_pending_transactions( const std::vector< crypto::multihash >& ids )
 {
    std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
    std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
 
-   auto& id_idx = _pending_transaction_idx.get< by_id >();
-
-   auto it = id_idx.find( id );
-   if ( it != id_idx.end() )
+   for ( const auto& id : ids )
    {
-      cleanup_account_resources( *it );
-      LOG(info) << "Removing included transaction from mempool: " << util::to_hex( it->transaction.id() );
-      id_idx.erase( it );
+      auto& id_idx = _pending_transaction_idx.get< by_id >();
+
+      auto it = id_idx.find( id );
+      if ( it != id_idx.end() )
+      {
+         cleanup_account_resources( *it );
+         LOG(info) << "Removing included transaction from mempool: " << util::to_hex( it->transaction.id() );
+         id_idx.erase( it );
+      }
    }
 }
 
@@ -336,9 +339,9 @@ void mempool::add_pending_transaction(
    _my->add_pending_transaction( transaction, height, payer, max_payer_rc, rc_limit, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
 }
 
-void mempool::remove_pending_transaction( const crypto::multihash& id )
+void mempool::remove_pending_transactions( const std::vector< crypto::multihash >& ids )
 {
-   _my->remove_pending_transaction( id );
+   _my->remove_pending_transactions( ids );
 }
 
 void mempool::prune( block_height_type h )

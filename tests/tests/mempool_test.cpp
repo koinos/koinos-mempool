@@ -88,8 +88,8 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
    trx_resource_limit = t2.header().rc_limit();
    BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2, 3, payer, max_payer_resources, trx_resource_limit, 1, 1, 1 ), mempool::pending_transaction_exceeds_resources );
 
-   BOOST_TEST_MESSAGE( "removing pending transaction" );
-   mempool.remove_pending_transaction( util::converter::to< crypto::multihash >( t1.id() ) );
+   BOOST_TEST_MESSAGE( "removing pending transactions" );
+   mempool.remove_pending_transactions( std::vector< crypto::multihash >{ util::converter::to< crypto::multihash >( t1.id() ) } );
 
    BOOST_TEST_MESSAGE( "checking pending transaction list" );
    {
