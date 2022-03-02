@@ -243,8 +243,6 @@ int main( int argc, char** argv )
                return;
             }
 
-            LOG(info) << "transaction failed " << util::to_hex( trx_fail.id() );
-
             mempool.remove_pending_transactions( std::vector< crypto::multihash >{ util::converter::to< crypto::multihash >( trx_fail.id() ) } );
          }
       );
@@ -281,6 +279,8 @@ int main( int argc, char** argv )
             {
                LOG(info) << "Could not remove pending transaction: " << e.what();
             }
+
+            LOG(info) << mempool.pending_transaction_count() << " pending transaction(s) exist in the pool";
          }
       );
 

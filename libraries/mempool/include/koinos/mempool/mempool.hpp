@@ -49,7 +49,8 @@ public:
    std::vector< rpc::mempool::pending_transaction > get_pending_transactions( std::size_t limit = MAX_PENDING_TRANSACTION_REQUEST );
    void remove_pending_transactions( const std::vector< crypto::multihash >& ids );
    void prune( block_height_type h );
-   std::size_t payer_entries_size()const;
+   std::size_t payer_entries_size() const;
+   std::size_t pending_transaction_count() const;
 };
 
 } // koinos::mempool
