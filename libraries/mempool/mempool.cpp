@@ -101,6 +101,7 @@ public:
    void prune( block_height_type h );
    std::size_t payer_entries_size() const;
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
+   std::size_t pending_transaction_count() const;
 
 private:
    bool check_pending_account_resources_lockfree(
@@ -303,6 +304,12 @@ void mempool_impl::cleanup_account_resources( const pending_transaction_object& 
    }
 }
 
+std::size_t mempool_impl::pending_transaction_count() const
+{
+   std::lock_guard< std::mutex > lock_guard( _pending_transaction_mutex );
+   return _pending_transaction_idx.size();
+}
+
 } // detail
 
 mempool::mempool() : _my( std::make_unique< detail::mempool_impl >() ) {}
@@ -352,6 +359,11 @@ void mempool::prune( block_height_type h )
 std::size_t mempool::payer_entries_size() const
 {
    return _my->payer_entries_size();
+}
+
+std::size_t mempool::pending_transaction_count() const
+{
+   return _my->pending_transaction_count();
 }
 
 } // koinos::mempool
