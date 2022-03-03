@@ -216,9 +216,7 @@ int main( int argc, char** argv )
                mempool.add_pending_transaction(
                   trx_accept.transaction(),
                   trx_accept.height(),
-                  trx_accept.receipt().payer(),
                   trx_accept.receipt().max_payer_rc(),
-                  trx_accept.receipt().rc_limit(),
                   trx_accept.receipt().disk_storage_used(),
                   trx_accept.receipt().network_bandwidth_used(),
                   trx_accept.receipt().compute_bandwidth_used()
@@ -243,7 +241,7 @@ int main( int argc, char** argv )
                return;
             }
 
-            mempool.remove_pending_transactions( std::vector< crypto::multihash >{ util::converter::to< crypto::multihash >( trx_fail.id() ) } );
+            mempool.remove_pending_transactions( std::vector< mempool::transaction_id_type >{ trx_fail.id() } );
          }
       );
 
@@ -261,11 +259,11 @@ int main( int argc, char** argv )
 
             try
             {
-               std::vector< crypto::multihash > ids;
+               std::vector< mempool::transaction_id_type > ids;
                const auto& block = block_accept.block();
                for ( int i = 0; i < block.transactions_size(); ++i )
                {
-                  ids.emplace_back( util::converter::to< crypto::multihash >( block.transactions( i ).id() ) );
+                  ids.emplace_back( block.transactions( i ).id() );
                }
 
                mempool.remove_pending_transactions( ids );
