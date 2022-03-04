@@ -37,7 +37,7 @@ public:
       uint64_t max_payer_rc,
       uint64_t rc_limit )const;
 
-   void add_pending_transaction(
+   uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
       block_height_type height,
       uint64_t max_payer_rc,
