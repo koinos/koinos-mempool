@@ -13,6 +13,7 @@
 #include <koinos/broadcast/broadcast.pb.h>
 #include <koinos/exception.hpp>
 #include <koinos/mempool/mempool.hpp>
+#include <koinos/mq/client.hpp>
 #include <koinos/mq/request_handler.hpp>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
 #include <koinos/util/conversion.hpp>
@@ -47,8 +48,9 @@ int main( int argc, char** argv )
    int retcode = EXIT_SUCCESS;
    std::vector< std::thread > threads;
 
-   boost::asio::io_context main_ioc, server_ioc;
+   boost::asio::io_context main_ioc, server_ioc, client_ioc;
    auto request_handler = koinos::mq::request_handler( server_ioc );
+   auto client = koinos::mq::client( client_ioc );
 
    try
    {
@@ -121,6 +123,9 @@ int main( int argc, char** argv )
          stopped = true;
          main_ioc.stop();
       } );
+
+      threads.emplace_back( [&]() { client_ioc.run(); } );
+      threads.emplace_back( [&]() { client_ioc.run(); } );
 
       for ( std::size_t i = 0; i < jobs; i++ )
          threads.emplace_back( [&]() { server_ioc.run(); } );
@@ -213,7 +218,7 @@ int main( int argc, char** argv )
 
             try
             {
-               mempool.add_pending_transaction(
+               auto rc_used = mempool.add_pending_transaction(
                   trx_accept.transaction(),
                   trx_accept.height(),
                   trx_accept.receipt().max_payer_rc(),
@@ -221,6 +226,14 @@ int main( int argc, char** argv )
                   trx_accept.receipt().network_bandwidth_used(),
                   trx_accept.receipt().compute_bandwidth_used()
                );
+
+               broadcast::mempool_accepted accepted_broadcast;
+               accepted_broadcast.mutable_transaction()->CopyFrom( trx_accept.transaction() );
+               accepted_broadcast.mutable_receipt()->CopyFrom( trx_accept.receipt() );
+               accepted_broadcast.set_height( trx_accept.height() );
+               accepted_broadcast.set_pending_rc_used( rc_used );
+
+               client.broadcast( "koinos.mempool.accept", util::converter::as< std::string >( accepted_broadcast ) );
             }
             catch ( const std::exception& e )
             {
@@ -283,10 +296,15 @@ int main( int argc, char** argv )
          }
       );
 
+      LOG(info) << "Connecting AMQP client...";
+      client.connect( amqp_url );
+      LOG(info) << "Established AMQP client connection to the server";
+
       LOG(info) << "Connecting AMQP request handler...";
       request_handler.connect( amqp_url );
-      LOG(info) << "Established connection to AMQP";
+      LOG(info) << "Established request handler connection to the AMQP server";
 
+      LOG(info) << "Listening for requests over AMQP";
       auto work = asio::make_work_guard( main_ioc );
       main_ioc.run();
    }

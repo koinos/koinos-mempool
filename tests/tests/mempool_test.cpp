@@ -61,7 +61,8 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 
    BOOST_TEST_MESSAGE( "adding pending transaction" );
    auto trx_resource_limit = t1.header().rc_limit();
-   mempool.add_pending_transaction( t1, 1, max_payer_resources, 1, 2, 3 );
+   auto rc_used = mempool.add_pending_transaction( t1, 1, max_payer_resources, 1, 2, 3 );
+   BOOST_CHECK_EQUAL( t1.header().rc_limit(), rc_used );
 
    BOOST_TEST_MESSAGE( "adding duplicate pending transaction" );
    BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t1, 2, max_payer_resources, 1, 2, 3 ), mempool::pending_transaction_insertion_failure );
@@ -116,23 +117,25 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
 {
    mempool::mempool mempool;
    protocol::transaction trx;
-   mempool::account_type payer;
-   uint64_t max_payer_resources;
+   mempool::account_type payer = _key1.get_public_key().to_address_bytes();;
+   uint64_t max_payer_resources = 1000000000000;
    uint64_t trx_resource_limit;
    chain::value_type nonce_value;
+   uint64_t rc_used = 0;
 
    for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST + 1; i++ )
    {
       nonce_value.set_uint64_value( i + 1 );
-      payer = _key1.get_public_key().to_address_bytes();
-      max_payer_resources = 1000000000000;
 
       trx.mutable_header()->set_rc_limit( 10 * i );
       trx.mutable_header()->set_payer( payer );
       trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
       trx.set_id( sign( _key1, trx ) );
 
-      mempool.add_pending_transaction( trx, i, max_payer_resources, 1, 1, 1 );
+      rc_used += trx.header().rc_limit();
+
+      auto rc = mempool.add_pending_transaction( trx, i, max_payer_resources, 1, 1, 1 );
+      BOOST_CHECK_EQUAL( rc, rc_used );
    }
 
    BOOST_REQUIRE_THROW( mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );

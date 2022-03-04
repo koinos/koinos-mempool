@@ -130,7 +130,7 @@ public:
       const account_type& payer,
       uint64_t max_payer_resources,
       uint64_t trx_resource_limit ) const;
-   void add_pending_transaction(
+   uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
       block_height_type height,
       uint64_t max_payer_rc,
@@ -217,7 +217,7 @@ bool mempool_impl::check_pending_account_resources(
    return check_pending_account_resources_lockfree( payer, max_payer_rc, rc_limit );
 }
 
-void mempool_impl::add_pending_transaction(
+uint64_t mempool_impl::add_pending_transaction(
    const protocol::transaction& transaction,
    block_height_type height,
    uint64_t max_payer_rc,
@@ -227,6 +227,7 @@ void mempool_impl::add_pending_transaction(
 {
    const auto& payer = transaction.header().payer();
    uint64_t rc_limit = transaction.header().rc_limit();
+   uint64_t rc_used = rc_limit;
 
    {
       std::lock_guard< std::mutex > guard( _account_resources_mutex );
@@ -333,10 +334,13 @@ void mempool_impl::add_pending_transaction(
             aro.resources = new_resources.convert_to< uint64_t >();
             aro.last_update = height;
          } );
+
+         rc_used = max_payer_rc - it->resources;
       }
    }
 
    LOG(info) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
+   return rc_used;
 }
 
 void mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
@@ -430,7 +434,7 @@ bool mempool::check_pending_account_resources(
    return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit );
 }
 
-void mempool::add_pending_transaction(
+uint64_t mempool::add_pending_transaction(
    const protocol::transaction& transaction,
    block_height_type height,
    uint64_t max_payer_rc,
@@ -438,7 +442,7 @@ void mempool::add_pending_transaction(
    uint64_t network_bandwidth_used,
    uint64_t compute_bandwidth_used )
 {
-   _my->add_pending_transaction( transaction, height, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
+   return _my->add_pending_transaction( transaction, height, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
 }
 
 void mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
