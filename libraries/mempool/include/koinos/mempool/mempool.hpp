@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -39,7 +40,7 @@ public:
 
    uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
-      block_height_type height,
+      std::chrono::system_clock::time_point time,
       uint64_t max_payer_rc,
       uint64_t disk_storaged_used,
       uint64_t network_bandwidth_used,
@@ -48,7 +49,7 @@ public:
    bool has_pending_transaction( const transaction_id_type& id )const;
    std::vector< rpc::mempool::pending_transaction > get_pending_transactions( std::size_t limit = MAX_PENDING_TRANSACTION_REQUEST );
    void remove_pending_transactions( const std::vector< transaction_id_type >& ids );
-   void prune( block_height_type h );
+   void prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now = std::chrono::system_clock::now() );
    std::size_t payer_entries_size() const;
    std::size_t pending_transaction_count() const;
 };

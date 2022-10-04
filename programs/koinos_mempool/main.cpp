@@ -1,4 +1,5 @@
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -6,6 +7,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/signal_set.hpp>
+#include <boost/asio/system_timer.hpp>
 #include <boost/program_options.hpp>
 
 #include <yaml-cpp/yaml.h>
@@ -21,15 +23,17 @@
 #include <koinos/util/random.hpp>
 #include <koinos/util/services.hpp>
 
-#define HELP_OPTION        "help"
-#define BASEDIR_OPTION     "basedir"
-#define AMQP_OPTION        "amqp"
-#define AMQP_DEFAULT       "amqp://guest:guest@localhost:5672/"
-#define LOG_LEVEL_OPTION   "log-level"
-#define LOG_LEVEL_DEFAULT  "info"
-#define INSTANCE_ID_OPTION "instance-id"
-#define JOBS_OPTION        "jobs"
-#define JOBS_DEFAULT       uint64_t( 2 )
+#define HELP_OPTION                    "help"
+#define BASEDIR_OPTION                 "basedir"
+#define AMQP_OPTION                    "amqp"
+#define AMQP_DEFAULT                   "amqp://guest:guest@localhost:5672/"
+#define LOG_LEVEL_OPTION               "log-level"
+#define LOG_LEVEL_DEFAULT              "info"
+#define INSTANCE_ID_OPTION             "instance-id"
+#define JOBS_OPTION                    "jobs"
+#define JOBS_DEFAULT                   uint64_t( 2 )
+#define TRANSACTION_EXPIRATION_OPTION  "transaction-expiration"
+#define TRANSACTION_EXPIRATION_DEFAULT 120
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
@@ -37,10 +41,7 @@ KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
 using namespace boost;
 using namespace koinos;
 
-namespace constants {
-   // If a transaction has not been included in ~1 hour, discard it
-   constexpr uint64_t trx_expiration_delta = 360;
-}
+using timer_func_type = std::function< void( const boost::system::error_code&, std::shared_ptr< koinos::mempool::mempool >, std::chrono::seconds ) >;
 
 int main( int argc, char** argv )
 {
@@ -51,17 +52,29 @@ int main( int argc, char** argv )
    boost::asio::io_context main_ioc, server_ioc, client_ioc;
    auto request_handler = koinos::mq::request_handler( server_ioc );
    auto client = koinos::mq::client( client_ioc );
+   auto timer = boost::asio::system_timer( server_ioc );
+
+   timer_func_type timer_func = [&]( const boost::system::error_code& ec, std::shared_ptr< koinos::mempool::mempool > mpool, std::chrono::seconds exp_time )
+   {
+      if ( ec == boost::asio::error::operation_aborted )
+         return;
+
+      mpool->prune( exp_time );
+      timer.expires_after( 1s );
+      timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error, mpool, exp_time ) );
+   };
 
    try
    {
       program_options::options_description options;
       options.add_options()
-         (HELP_OPTION       ",h", "Print this help message and exit")
-         (BASEDIR_OPTION    ",d", program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory")
-         (AMQP_OPTION       ",a", program_options::value< std::string >(), "AMQP server URL")
-         (LOG_LEVEL_OPTION  ",l", program_options::value< std::string >(), "The log filtering level")
-         (INSTANCE_ID_OPTION",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
-         (JOBS_OPTION       ",j", program_options::value< uint64_t >(), "The number of worker jobs");
+         (HELP_OPTION                  ",h", "Print this help message and exit")
+         (BASEDIR_OPTION               ",d", program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory")
+         (AMQP_OPTION                  ",a", program_options::value< std::string >(), "AMQP server URL")
+         (LOG_LEVEL_OPTION             ",l", program_options::value< std::string >(), "The log filtering level")
+         (INSTANCE_ID_OPTION           ",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
+         (JOBS_OPTION                  ",j", program_options::value< uint64_t >(), "The number of worker jobs")
+         (TRANSACTION_EXPIRATION_OPTION",e", program_options::value< uint64_t >(), "The number of seconds a transaction should expire in");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -93,10 +106,11 @@ int main( int argc, char** argv )
          mempool_config = config[ util::service::mempool ];
       }
 
-      auto amqp_url    = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
-      auto log_level   = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
-      auto instance_id = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
-      auto jobs        = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
+      auto amqp_url      = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
+      auto log_level     = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
+      auto instance_id   = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
+      auto jobs          = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
+      auto tx_expiration = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
 
       koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool / "logs" );
 
@@ -109,6 +123,7 @@ int main( int argc, char** argv )
 
       LOG(info) << "Starting mempool...";
       LOG(info) << "Number of jobs: " << jobs;
+      LOG(info) << "Transaction expiration: " << tx_expiration.count() << "s";
 
       boost::asio::signal_set signals( server_ioc );
       signals.add( SIGINT );
@@ -130,7 +145,7 @@ int main( int argc, char** argv )
       for ( std::size_t i = 0; i < jobs; i++ )
          threads.emplace_back( [&]() { server_ioc.run(); } );
 
-      koinos::mempool::mempool mempool;
+      std::shared_ptr< koinos::mempool::mempool > mempool = std::make_shared< koinos::mempool::mempool >();
 
       request_handler.add_rpc_handler(
          util::service::mempool,
@@ -148,7 +163,7 @@ int main( int argc, char** argv )
                      {
                         const auto& p = args.check_pending_account_resources();
                         resp.mutable_check_pending_account_resources()->set_success(
-                           mempool.check_pending_account_resources(
+                           mempool->check_pending_account_resources(
                               p.payer(),
                               p.max_payer_rc(),
                               p.rc_limit()
@@ -160,7 +175,7 @@ int main( int argc, char** argv )
                      case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactions:
                      {
                         const auto& p = args.get_pending_transactions();
-                        auto transactions = mempool.get_pending_transactions( p.limit() );
+                        auto transactions = mempool->get_pending_transactions( p.limit() );
                         auto pending_trxs = resp.mutable_get_pending_transactions();
                         for( const auto& trx : transactions )
                         {
@@ -218,9 +233,9 @@ int main( int argc, char** argv )
 
             try
             {
-               auto rc_used = mempool.add_pending_transaction(
+               auto rc_used = mempool->add_pending_transaction(
                   trx_accept.transaction(),
-                  trx_accept.height(),
+                  std::chrono::system_clock::now(),
                   trx_accept.receipt().max_payer_rc(),
                   trx_accept.receipt().disk_storage_used(),
                   trx_accept.receipt().network_bandwidth_used(),
@@ -254,7 +269,7 @@ int main( int argc, char** argv )
                return;
             }
 
-            mempool.remove_pending_transactions( std::vector< mempool::transaction_id_type >{ trx_fail.id() } );
+            mempool->remove_pending_transactions( std::vector< mempool::transaction_id_type >{ trx_fail.id() } );
          }
       );
 
@@ -279,12 +294,7 @@ int main( int argc, char** argv )
                   ids.emplace_back( block.transactions( i ).id() );
                }
 
-               mempool.remove_pending_transactions( ids );
-
-               if ( block.header().height() > constants::trx_expiration_delta )
-               {
-                  mempool.prune( block.header().height() - constants::trx_expiration_delta );
-               }
+               mempool->remove_pending_transactions( ids );
             }
             catch ( const std::exception& e )
             {
@@ -292,9 +302,12 @@ int main( int argc, char** argv )
             }
 
             if ( block_accept.live() )
-               LOG(info) << mempool.pending_transaction_count() << " pending transaction(s) exist in the pool";
+               LOG(info) << mempool->pending_transaction_count() << " pending transaction(s) exist in the pool";
          }
       );
+
+      timer.expires_after( 1s );
+      timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error, mempool, tx_expiration ) );
 
       LOG(info) << "Connecting AMQP client...";
       client.connect( amqp_url );
@@ -336,6 +349,8 @@ int main( int argc, char** argv )
       LOG(fatal) << "An unexpected error has occurred";
       retcode = EXIT_FAILURE;
    }
+
+   timer.cancel();
 
    for ( auto& t : threads )
       t.join();

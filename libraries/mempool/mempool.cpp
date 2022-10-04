@@ -1,5 +1,6 @@
 #include <koinos/mempool/mempool.hpp>
 
+#include <chrono>
 #include <functional>
 #include <tuple>
 
@@ -23,15 +24,16 @@ namespace detail {
 
 using namespace boost;
 using int128_t = boost::multiprecision::int128_t;
+using namespace std::chrono_literals;
 
 struct pending_transaction_object
 {
-   protocol::transaction transaction;
-   block_height_type     last_update;            //< Chain height at the time of submission
-   nonce_type            nonce;
-   uint64_t              disk_storage_used;
-   uint64_t              network_bandwidth_used;
-   uint64_t              compute_bandwidth_used;
+   protocol::transaction                 transaction;
+   std::chrono::system_clock::time_point time;
+   nonce_type                            nonce;
+   uint64_t                              disk_storage_used;
+   uint64_t                              network_bandwidth_used;
+   uint64_t                              compute_bandwidth_used;
 
    const transaction_id_type& id() const
    {
@@ -70,16 +72,25 @@ struct pending_transaction_iterator_wrapper
    {
       return iterator->nonce;
    }
+
+   const std::chrono::system_clock::time_point& time() const
+   {
+      return iterator->time;
+   }
 };
 
 struct by_id;
 struct by_account_nonce;
+struct by_time;
 
 using pending_transaction_index = multi_index_container<
    pending_transaction_iterator_wrapper,
    multi_index::indexed_by<
       multi_index::ordered_unique< multi_index::tag< by_id >,
          multi_index::const_mem_fun< pending_transaction_iterator_wrapper, const transaction_id_type&, &pending_transaction_iterator_wrapper::id >
+      >,
+      multi_index::ordered_non_unique< multi_index::tag< by_time >,
+         multi_index::const_mem_fun< pending_transaction_iterator_wrapper, const std::chrono::system_clock::time_point&, &pending_transaction_iterator_wrapper::time >
       >,
       multi_index::ordered_unique< multi_index::tag< by_account_nonce >,
          multi_index::composite_key<
@@ -93,10 +104,10 @@ using pending_transaction_index = multi_index_container<
 
 struct account_resources_object
 {
-   account_type      account;
-   uint64_t          resources;
-   uint64_t          max_resources;
-   block_height_type last_update;
+   account_type                          account;
+   uint64_t                              resources;
+   uint64_t                              max_resources;
+   std::chrono::system_clock::time_point time;
 };
 
 struct by_account;
@@ -132,13 +143,13 @@ public:
       uint64_t trx_resource_limit ) const;
    uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
-      block_height_type height,
+      std::chrono::system_clock::time_point time,
       uint64_t max_payer_rc,
       uint64_t disk_storaged_used,
       uint64_t network_bandwidth_used,
       uint64_t compute_bandwidth_used );
    void remove_pending_transactions( const std::vector< transaction_id_type >& ids );
-   void prune( block_height_type h );
+   void prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
    std::size_t payer_entries_size() const;
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
    std::size_t pending_transaction_count() const;
@@ -219,7 +230,7 @@ bool mempool_impl::check_pending_account_resources(
 
 uint64_t mempool_impl::add_pending_transaction(
    const protocol::transaction& transaction,
-   block_height_type height,
+   std::chrono::system_clock::time_point time,
    uint64_t max_payer_rc,
    uint64_t disk_storaged_used,
    uint64_t network_bandwidth_used,
@@ -276,7 +287,7 @@ uint64_t mempool_impl::add_pending_transaction(
          pending_transaction_iterator transaction_iterator;
          pending_transaction_object pending_transaction {
             .transaction            = transaction,
-            .last_update            = height,
+            .time                   = time,
             .nonce                  = nonce,
             .disk_storage_used      = disk_storaged_used,
             .network_bandwidth_used = network_bandwidth_used,
@@ -292,7 +303,6 @@ uint64_t mempool_impl::add_pending_transaction(
                ("a", util::to_base58( payer ) )( "n", nonce )
             );
 
-            pending_transaction.last_update = account_nonce_iterator->iterator->last_update;
             transaction_iterator = _pending_transactions.emplace( account_nonce_iterator->iterator, std::move( pending_transaction ) );
          }
          else
@@ -320,7 +330,7 @@ uint64_t mempool_impl::add_pending_transaction(
             .account       = payer,
             .resources     = max_payer_rc - rc_limit,
             .max_resources = max_payer_rc,
-            .last_update   = height
+            .time          = time
          } );
       }
       else
@@ -331,8 +341,8 @@ uint64_t mempool_impl::add_pending_transaction(
          account_idx.modify( it, [&]( account_resources_object& aro )
          {
             aro.max_resources = max_payer_rc;
-            aro.resources = new_resources.convert_to< uint64_t >();
-            aro.last_update = height;
+            aro.resources     = new_resources.convert_to< uint64_t >();
+            aro.time          = time;
          } );
 
          rc_used = max_payer_rc - it->resources;
@@ -363,20 +373,21 @@ void mempool_impl::remove_pending_transactions( const std::vector< transaction_i
    }
 }
 
-void mempool_impl::prune( block_height_type h )
+void mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
    std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
    std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
 
-   auto& by_id_idx = _pending_transaction_idx.get< by_id >();
-   auto itr = _pending_transactions.begin();
+   auto& by_time_idx = _pending_transaction_idx.get< by_time >();
+   auto itr = by_time_idx.begin();
 
-   while( itr != _pending_transactions.end() && itr->last_update <= h )
+   while ( itr != by_time_idx.end() && itr->time() + expiration <= now )
    {
-      cleanup_account_resources( *itr );
-      LOG(info) << "Pruning transaction from mempool: " << util::to_hex( itr->transaction.id() );
-      by_id_idx.erase( itr->transaction.id() );
-      itr = _pending_transactions.erase( itr );
+      cleanup_account_resources( *(itr->iterator) );
+      LOG(info) << "Pruning transaction from mempool: " << util::to_hex( itr->id() );
+      _pending_transactions.erase( itr->iterator );
+      by_time_idx.erase( itr );
+      itr = by_time_idx.begin();
    }
 }
 
@@ -436,13 +447,13 @@ bool mempool::check_pending_account_resources(
 
 uint64_t mempool::add_pending_transaction(
    const protocol::transaction& transaction,
-   block_height_type height,
+   std::chrono::system_clock::time_point time,
    uint64_t max_payer_rc,
    uint64_t disk_storaged_used,
    uint64_t network_bandwidth_used,
    uint64_t compute_bandwidth_used )
 {
-   return _my->add_pending_transaction( transaction, height, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
+   return _my->add_pending_transaction( transaction, time, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
 }
 
 void mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
@@ -450,9 +461,9 @@ void mempool::remove_pending_transactions( const std::vector< transaction_id_typ
    _my->remove_pending_transactions( ids );
 }
 
-void mempool::prune( block_height_type h )
+void mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
-   _my->prune( h );
+   _my->prune( expiration, now );
 }
 
 std::size_t mempool::payer_entries_size() const
