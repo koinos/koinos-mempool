@@ -349,7 +349,7 @@ uint64_t mempool_impl::add_pending_transaction(
       }
    }
 
-   LOG(info) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
+   LOG(debug) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
    return rc_used;
 }
 
@@ -358,6 +358,7 @@ void mempool_impl::remove_pending_transactions( const std::vector< transaction_i
    std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
    std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
 
+   std::size_t count = 0;
    for ( const auto& id : ids )
    {
       auto& id_idx = _pending_transaction_idx.get< by_id >();
@@ -366,11 +367,15 @@ void mempool_impl::remove_pending_transactions( const std::vector< transaction_i
       if ( itr != id_idx.end() )
       {
          cleanup_account_resources( *(itr->iterator) );
-         LOG(info) << "Removing included transaction from mempool: " << util::to_hex( itr->iterator->transaction.id() );
          _pending_transactions.erase( itr->iterator );
          id_idx.erase( itr );
+         LOG(debug) << "Removing included transaction from mempool: " << util::to_hex( itr->iterator->transaction.id() );
+         count++;
       }
    }
+
+   if ( count )
+      LOG(info) << "Removed " << count << " included transaction(s) from mempool";
 }
 
 void mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
@@ -381,14 +386,19 @@ void mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_c
    auto& by_time_idx = _pending_transaction_idx.get< by_time >();
    auto itr = by_time_idx.begin();
 
+   std::size_t count = 0;
    while ( itr != by_time_idx.end() && itr->time() + expiration <= now )
    {
       cleanup_account_resources( *(itr->iterator) );
-      LOG(info) << "Pruning transaction from mempool: " << util::to_hex( itr->id() );
       _pending_transactions.erase( itr->iterator );
       by_time_idx.erase( itr );
       itr = by_time_idx.begin();
+      LOG(debug) << "Pruning transaction from mempool: " << util::to_hex( itr->id() );
+      count++;
    }
+
+   if ( count )
+      LOG(info) << "Pruned " << count << " transaction(s) from mempool";
 }
 
 std::size_t mempool_impl::payer_entries_size() const
