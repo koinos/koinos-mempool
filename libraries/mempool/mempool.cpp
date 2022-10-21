@@ -368,8 +368,8 @@ void mempool_impl::remove_pending_transactions( const std::vector< transaction_i
       {
          cleanup_account_resources( *(itr->iterator) );
          _pending_transactions.erase( itr->iterator );
-         id_idx.erase( itr );
          LOG(debug) << "Removing included transaction from mempool: " << util::to_hex( itr->iterator->transaction.id() );
+         id_idx.erase( itr );
          count++;
       }
    }
@@ -391,9 +391,9 @@ void mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_c
    {
       cleanup_account_resources( *(itr->iterator) );
       _pending_transactions.erase( itr->iterator );
+      LOG(debug) << "Pruning transaction from mempool: " << util::to_hex( itr->id() );
       by_time_idx.erase( itr );
       itr = by_time_idx.begin();
-      LOG(debug) << "Pruning transaction from mempool: " << util::to_hex( itr->id() );
       count++;
    }
 
