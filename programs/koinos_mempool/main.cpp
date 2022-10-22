@@ -301,8 +301,9 @@ int main( int argc, char** argv )
                LOG(info) << "Could not remove pending transaction: " << e.what();
             }
 
-            if ( block_accept.live() )
-               LOG(info) << mempool->pending_transaction_count() << " pending transaction(s) exist in the pool";
+            auto num_pending_tx = mempool->pending_transaction_count();
+            if ( block_accept.live() && num_pending_tx )
+               LOG(info) << num_pending_tx << " pending transaction(s) exist in the pool";
          }
       );
 
