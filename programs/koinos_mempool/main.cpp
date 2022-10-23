@@ -289,21 +289,20 @@ int main( int argc, char** argv )
             {
                std::vector< mempool::transaction_id_type > ids;
                const auto& block = block_accept.block();
-               for ( int i = 0; i < block.transactions_size(); ++i )
-               {
-                  ids.emplace_back( block.transactions( i ).id() );
-               }
 
-               mempool->remove_pending_transactions( ids );
+               for ( int i = 0; i < block.transactions_size(); ++i )
+                  ids.emplace_back( block.transactions( i ).id() );
+
+               const auto [ removed, remaining ] = mempool->remove_pending_transactions( ids );
+
+               if ( removed || remaining )
+                  LOG(info) << "Removed " << removed << " included transaction(s) with " << remaining << " pending transaction(s) remaining"
+                     << " via block - Height: " << block.header().height() << ", ID: " << util::to_hex( block.id() );
             }
             catch ( const std::exception& e )
             {
-               LOG(info) << "Could not remove pending transaction: " << e.what();
+               LOG(warning) << "Could not remove pending transaction: " << e.what();
             }
-
-            auto num_pending_tx = mempool->pending_transaction_count();
-            if ( block_accept.live() && num_pending_tx )
-               LOG(info) << num_pending_tx << " pending transaction(s) exist in the pool";
          }
       );
 

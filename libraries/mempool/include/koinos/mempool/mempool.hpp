@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <koinos/crypto/multihash.hpp>
@@ -48,7 +49,7 @@ public:
 
    bool has_pending_transaction( const transaction_id_type& id )const;
    std::vector< rpc::mempool::pending_transaction > get_pending_transactions( std::size_t limit = MAX_PENDING_TRANSACTION_REQUEST );
-   void remove_pending_transactions( const std::vector< transaction_id_type >& ids );
+   std::pair< uint64_t, uint64_t > remove_pending_transactions( const std::vector< transaction_id_type >& ids );
    void prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now = std::chrono::system_clock::now() );
    std::size_t payer_entries_size() const;
    std::size_t pending_transaction_count() const;
