@@ -148,8 +148,8 @@ public:
       uint64_t disk_storaged_used,
       uint64_t network_bandwidth_used,
       uint64_t compute_bandwidth_used );
-   void remove_pending_transactions( const std::vector< transaction_id_type >& ids );
-   void prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
+   std::pair< uint64_t, uint64_t > remove_pending_transactions( const std::vector< transaction_id_type >& ids );
+   uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
    std::size_t payer_entries_size() const;
    void cleanup_account_resources( const pending_transaction_object& pending_trx );
    std::size_t pending_transaction_count() const;
@@ -353,7 +353,7 @@ uint64_t mempool_impl::add_pending_transaction(
    return rc_used;
 }
 
-void mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
+std::pair< uint64_t, uint64_t > mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
    std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
    std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
@@ -374,11 +374,10 @@ void mempool_impl::remove_pending_transactions( const std::vector< transaction_i
       }
    }
 
-   if ( count )
-      LOG(info) << "Removed " << count << " included transaction(s) from mempool";
+   return std::make_pair( count, _pending_transactions.size() );
 }
 
-void mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
+uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
    std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
    std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
@@ -397,8 +396,7 @@ void mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_c
       count++;
    }
 
-   if ( count )
-      LOG(info) << "Pruned " << count << " transaction(s) from mempool";
+   return count;
 }
 
 std::size_t mempool_impl::payer_entries_size() const
@@ -466,14 +464,14 @@ uint64_t mempool::add_pending_transaction(
    return _my->add_pending_transaction( transaction, time, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
 }
 
-void mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
+std::pair< uint64_t, uint64_t > mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
-   _my->remove_pending_transactions( ids );
+   return _my->remove_pending_transactions( ids );
 }
 
-void mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
+uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
-   _my->prune( expiration, now );
+   return _my->prune( expiration, now );
 }
 
 std::size_t mempool::payer_entries_size() const

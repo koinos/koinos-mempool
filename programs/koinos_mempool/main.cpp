@@ -56,10 +56,22 @@ int main( int argc, char** argv )
 
    timer_func_type timer_func = [&]( const boost::system::error_code& ec, std::shared_ptr< koinos::mempool::mempool > mpool, std::chrono::seconds exp_time )
    {
+      static uint64_t num_pruned = 0;
+      static auto last_message = std::chrono::system_clock::now();
+
       if ( ec == boost::asio::error::operation_aborted )
          return;
 
-      mpool->prune( exp_time );
+      num_pruned += mpool->prune( exp_time );
+
+      auto now = std::chrono::system_clock::now();
+      if ( now - last_message >= std::chrono::minutes{ 1 } && num_pruned )
+      {
+         LOG(info) << "Pruned " << num_pruned << " transaction(s) from mempool";
+         last_message = now;
+         num_pruned = 0;
+      }
+
       timer.expires_after( 1s );
       timer.async_wait( boost::bind( timer_func, boost::asio::placeholders::error, mpool, exp_time ) );
    };
@@ -289,20 +301,20 @@ int main( int argc, char** argv )
             {
                std::vector< mempool::transaction_id_type > ids;
                const auto& block = block_accept.block();
-               for ( int i = 0; i < block.transactions_size(); ++i )
-               {
-                  ids.emplace_back( block.transactions( i ).id() );
-               }
 
-               mempool->remove_pending_transactions( ids );
+               for ( int i = 0; i < block.transactions_size(); ++i )
+                  ids.emplace_back( block.transactions( i ).id() );
+
+               const auto [ removed, remaining ] = mempool->remove_pending_transactions( ids );
+
+               if ( removed || remaining )
+                  LOG(info) << "Removed " << removed << " included transaction(s) with " << remaining << " pending transaction(s) remaining"
+                     << " via block - Height: " << block.header().height() << ", ID: " << util::to_hex( block.id() );
             }
             catch ( const std::exception& e )
             {
-               LOG(info) << "Could not remove pending transaction: " << e.what();
+               LOG(warning) << "Could not remove pending transaction: " << e.what();
             }
-
-            if ( block_accept.live() )
-               LOG(info) << mempool->pending_transaction_count() << " pending transaction(s) exist in the pool";
          }
       );
 
