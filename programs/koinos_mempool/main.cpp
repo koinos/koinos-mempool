@@ -54,21 +54,21 @@ int main( int argc, char** argv )
    auto client = koinos::mq::client( client_ioc );
    auto timer = boost::asio::system_timer( server_ioc );
 
-   std::atomic< uint64_t > num_pruned = 0;
-   std::atomic< std::chrono::system_clock::time_point > last_prune_message = std::chrono::system_clock::now();
-
    timer_func_type timer_func = [&]( const boost::system::error_code& ec, std::shared_ptr< koinos::mempool::mempool > mpool, std::chrono::seconds exp_time )
    {
+      static uint64_t num_pruned = 0;
+      static auto last_message = std::chrono::system_clock::now();
+
       if ( ec == boost::asio::error::operation_aborted )
          return;
 
       num_pruned += mpool->prune( exp_time );
 
       auto now = std::chrono::system_clock::now();
-      if ( now - last_prune_message.load() >= std::chrono::minutes{ 1 } && num_pruned )
+      if ( now - last_message >= std::chrono::minutes{ 1 } && num_pruned )
       {
          LOG(info) << "Pruned " << num_pruned << " transaction(s) from mempool";
-         last_prune_message = now;
+         last_message = now;
          num_pruned = 0;
       }
 
