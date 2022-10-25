@@ -65,7 +65,7 @@ int main( int argc, char** argv )
       num_pruned += mpool->prune( exp_time );
 
       auto now = std::chrono::system_clock::now();
-      if ( now - last_message >= std::chrono::minutes{ 1 } && num_pruned )
+      if ( now - last_message >= 1min && num_pruned )
       {
          LOG(info) << "Pruned " << num_pruned << " transaction(s) from mempool";
          last_message = now;
@@ -307,7 +307,7 @@ int main( int argc, char** argv )
 
                const auto [ removed, remaining ] = mempool->remove_pending_transactions( ids );
 
-               if ( removed || remaining )
+               if ( block_accept.live() && ( removed || remaining ) )
                   LOG(info) << "Removed " << removed << " included transaction(s) with " << remaining << " pending transaction(s) remaining"
                      << " via block - Height: " << block.header().height() << ", ID: " << util::to_hex( block.id() );
             }
