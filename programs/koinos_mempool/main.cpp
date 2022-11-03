@@ -23,7 +23,10 @@
 #include <koinos/util/random.hpp>
 #include <koinos/util/services.hpp>
 
+#include "git_version.h"
+
 #define HELP_OPTION                    "help"
+#define VERSION_OPTION                 "version"
 #define BASEDIR_OPTION                 "basedir"
 #define AMQP_OPTION                    "amqp"
 #define AMQP_DEFAULT                   "amqp://guest:guest@localhost:5672/"
@@ -41,6 +44,7 @@ KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
 using namespace boost;
 using namespace koinos;
 
+const std::string& version_string();
 using timer_func_type = std::function< void( const boost::system::error_code&, std::shared_ptr< koinos::mempool::mempool >, std::chrono::seconds ) >;
 
 int main( int argc, char** argv )
@@ -81,6 +85,7 @@ int main( int argc, char** argv )
       program_options::options_description options;
       options.add_options()
          (HELP_OPTION                  ",h", "Print this help message and exit")
+         (VERSION_OPTION               ",v", "Print version string and exit")
          (BASEDIR_OPTION               ",d", program_options::value< std::string >()->default_value( util::get_default_base_directory().string() ), "Koinos base directory")
          (AMQP_OPTION                  ",a", program_options::value< std::string >(), "AMQP server URL")
          (LOG_LEVEL_OPTION             ",l", program_options::value< std::string >(), "The log filtering level")
@@ -94,6 +99,14 @@ int main( int argc, char** argv )
       if ( args.count( HELP_OPTION ) )
       {
          std::cout << options << std::endl;
+         return EXIT_SUCCESS;
+      }
+
+      if ( args.count( VERSION_OPTION ) )
+      {
+         const auto& v_str = version_string();
+         std::cout.write( v_str.c_str(), v_str.size() );
+         std::cout << std::endl;
          return EXIT_SUCCESS;
       }
 
@@ -125,6 +138,8 @@ int main( int argc, char** argv )
       auto tx_expiration = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
 
       koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool / "logs" );
+
+      LOG(info) << version_string();
 
       KOINOS_ASSERT( jobs > 1, invalid_argument, "jobs must be greater than 1" );
 
@@ -371,3 +386,12 @@ int main( int argc, char** argv )
 
    return retcode;
 }
+
+const std::string& version_string()
+{
+   static std::string v_str = "Koinos Mempool v";
+   v_str += std::to_string( KOINOS_MAJOR_VERSION ) + "." + std::to_string( KOINOS_MINOR_VERSION ) + "." + std::to_string( KOINOS_PATCH_VERSION );
+   v_str += " (" + std::string( KOINOS_GIT_HASH ) + ")";
+   return v_str;
+}
+
