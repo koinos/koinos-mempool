@@ -97,7 +97,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 
    BOOST_TEST_MESSAGE( "adding pending transaction that exceeds accout resources" );
    max_payer_resources = 1000000000000;
-   trx_resource_limit = t2.header().rc_limit();
+
    BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ), mempool::pending_transaction_exceeds_resources );
 
    BOOST_TEST_MESSAGE( "removing pending transactions" );
