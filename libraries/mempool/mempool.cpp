@@ -1,18 +1,16 @@
 #include <koinos/mempool/mempool.hpp>
+#include <koinos/mempool/state.hpp>
 
 #include <chrono>
 #include <functional>
 #include <tuple>
 
 #include <boost/multiprecision/cpp_int.hpp>
-#include <boost/multi_index_container.hpp>
-#include <boost/multi_index/composite_key.hpp>
-#include <boost/multi_index/mem_fun.hpp>
-#include <boost/multi_index/member.hpp>
-#include <boost/multi_index/ordered_index.hpp>
-#include <boost/multi_index/sequenced_index.hpp>
 
 #include <koinos/chain/value.pb.h>
+#include <koinos/protocol/protocol.pb.h>
+#include <koinos/mempool/mempool.pb.h>
+#include <koinos/state_db/state_db.hpp>
 
 #include <koinos/util/base58.hpp>
 #include <koinos/util/conversion.hpp>
@@ -22,114 +20,13 @@ namespace koinos::mempool {
 
 namespace detail {
 
-using namespace boost;
 using int128_t = boost::multiprecision::int128_t;
-using namespace std::chrono_literals;
-
-struct pending_transaction_object
-{
-   protocol::transaction                 transaction;
-   std::chrono::system_clock::time_point time;
-   nonce_type                            nonce;
-   uint64_t                              disk_storage_used;
-   uint64_t                              network_bandwidth_used;
-   uint64_t                              compute_bandwidth_used;
-
-   const transaction_id_type& id() const
-   {
-      return transaction.id();
-   }
-
-   const account_type& payer() const
-   {
-      return transaction.header().payer();
-   }
-
-   uint64_t rc_limit() const
-   {
-      return transaction.header().rc_limit();
-   }
-};
-
-using pending_transaction_queue = std::list< pending_transaction_object >;
-using pending_transaction_iterator = pending_transaction_queue::iterator;
-
-struct pending_transaction_iterator_wrapper
-{
-   pending_transaction_iterator iterator;
-
-   const transaction_id_type& id() const
-   {
-      return iterator->id();
-   }
-
-   const account_type& payer() const
-   {
-      return iterator->payer();
-   }
-
-   const nonce_type& nonce() const
-   {
-      return iterator->nonce;
-   }
-
-   const std::chrono::system_clock::time_point& time() const
-   {
-      return iterator->time;
-   }
-};
-
-struct by_id;
-struct by_account_nonce;
-struct by_time;
-
-using pending_transaction_index = multi_index_container<
-   pending_transaction_iterator_wrapper,
-   multi_index::indexed_by<
-      multi_index::ordered_unique< multi_index::tag< by_id >,
-         multi_index::const_mem_fun< pending_transaction_iterator_wrapper, const transaction_id_type&, &pending_transaction_iterator_wrapper::id >
-      >,
-      multi_index::ordered_non_unique< multi_index::tag< by_time >,
-         multi_index::const_mem_fun< pending_transaction_iterator_wrapper, const std::chrono::system_clock::time_point&, &pending_transaction_iterator_wrapper::time >
-      >,
-      multi_index::ordered_unique< multi_index::tag< by_account_nonce >,
-         multi_index::composite_key<
-            pending_transaction_iterator_wrapper,
-            multi_index::const_mem_fun< pending_transaction_iterator_wrapper, const account_type&, &pending_transaction_iterator_wrapper::payer >,
-            multi_index::const_mem_fun< pending_transaction_iterator_wrapper, const nonce_type&, &pending_transaction_iterator_wrapper::nonce >
-         >
-      >
-   >
->;
-
-struct account_resources_object
-{
-   account_type                          account;
-   uint64_t                              resources;
-   uint64_t                              max_resources;
-   std::chrono::system_clock::time_point time;
-};
-
-struct by_account;
-
-using account_resources_index = multi_index_container<
-   account_resources_object,
-   multi_index::indexed_by<
-      multi_index::ordered_unique< multi_index::tag< by_account >,
-         multi_index::member< account_resources_object, account_type, &account_resources_object::account >
-      >
-   >
->;
 
 class mempool_impl final
 {
 private:
-   account_resources_index          _account_resources_idx;
-   mutable std::mutex               _account_resources_mutex;
-
-   pending_transaction_queue        _pending_transactions;
-   pending_transaction_index        _pending_transaction_idx;
-   mutable std::mutex               _pending_transaction_mutex;
+   state_db::database _db;
+   state_db::state_node_ptr _state_node;
 
 public:
    mempool_impl();
@@ -150,9 +47,7 @@ public:
       uint64_t compute_bandwidth_used );
    std::pair< uint64_t, uint64_t > remove_pending_transactions( const std::vector< transaction_id_type >& ids );
    uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
-   std::size_t payer_entries_size() const;
-   void cleanup_account_resources( const pending_transaction_object& pending_trx );
-   std::size_t pending_transaction_count() const;
+   void cleanup_account_resources( state_db::anonymous_state_node_ptr node, const pending_transaction_record& pending_trx );
 
 private:
    bool check_pending_account_resources_lockfree(
@@ -162,40 +57,68 @@ private:
       )const;
 };
 
-mempool_impl::mempool_impl() {}
+mempool_impl::mempool_impl()
+{
+   state_db::state_node_comparator_function comp;
+
+   auto algo = fork_resolution_algorithm::pob;
+
+   switch ( algo )
+   {
+      case fork_resolution_algorithm::block_time:
+         comp = &state_db::block_time_comparator;
+         break;
+      case fork_resolution_algorithm::pob:
+         comp = &state_db::pob_comparator;
+         break;
+      case fork_resolution_algorithm::fifo:
+         [[fallthrough]];
+      default:
+         comp = &state_db::fifo_comparator;
+   }
+
+
+   { _db.open( {}, []( state_db::state_node_ptr ){}, comp, _db.get_unique_lock() ); }
+
+   auto lock =_db.get_shared_lock();
+   _state_node = _db.create_writable_node( _db.get_head( lock )->id(), crypto::hash( crypto::multicodec::sha2_256, std::string{"x"} ), protocol::block_header(), lock );
+}
+
 mempool_impl::~mempool_impl() = default;
 
 bool mempool_impl::has_pending_transaction( const transaction_id_type& id ) const
 {
-   std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
-   auto& id_idx = _pending_transaction_idx.get< by_id >();
-
-   auto it = id_idx.find( id );
-
-   return it != id_idx.end();
+   return _state_node->get_object( space::transaction_index(), id ) != nullptr;
 }
 
 std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_transactions( std::size_t limit )
 {
-   KOINOS_ASSERT( limit <= MAX_PENDING_TRANSACTION_REQUEST, pending_transaction_request_overflow, "Requested too many pending transactions. Max: ${max}", ("max", MAX_PENDING_TRANSACTION_REQUEST) );
-
-   std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
+   KOINOS_ASSERT( limit <= MAX_PENDING_TRANSACTION_REQUEST, pending_transaction_request_overflow, "requested too many pending transactions. max: ${max}", ("max", MAX_PENDING_TRANSACTION_REQUEST) );
 
    std::vector< rpc::mempool::pending_transaction > pending_transactions;
-   pending_transactions.reserve(limit);
+   pending_transactions.reserve( limit );
 
-   auto itr = _pending_transactions.begin();
+   state_db::object_key next = state_db::object_key();
 
-   while ( itr != _pending_transactions.end() && pending_transactions.size() < limit )
+   while ( pending_transactions.size() < limit )
    {
+      auto [ value, key ] = _state_node->get_next_object( space::pending_transaction(), next );
+
+      if ( !value )
+         break;
+
+      next = key;
+
+      auto pending_tx = util::converter::to< pending_transaction_record >( *value );
+      uint64_t seq_no = util::converter::to< uint64_t >( key );
+
       rpc::mempool::pending_transaction ptx;
-      *ptx.mutable_transaction() = itr->transaction;
-      ptx.set_disk_storage_used( itr->disk_storage_used );
-      ptx.set_network_bandwidth_used( itr->network_bandwidth_used );
-      ptx.set_compute_bandwidth_used( itr->compute_bandwidth_used );
+      *ptx.mutable_transaction() = pending_tx.transaction();
+      ptx.set_disk_storage_used( pending_tx.disk_storage_used() );
+      ptx.set_network_bandwidth_used( pending_tx.network_bandwidth_used() );
+      ptx.set_compute_bandwidth_used( pending_tx.compute_bandwidth_used() );
 
       pending_transactions.push_back( ptx );
-      ++itr;
    }
 
    return pending_transactions;
@@ -206,16 +129,15 @@ bool mempool_impl::check_pending_account_resources_lockfree(
    uint64_t max_payer_resources,
    uint64_t trx_resource_limit ) const
 {
-   auto& account_idx = _account_resources_idx.get< by_account >();
-   auto it = account_idx.find( payer );
+   auto obj = _state_node->get_object( space::address_resources(), payer );
 
-   if ( it == account_idx.end() )
-   {
+   if ( !obj )
       return trx_resource_limit <= max_payer_resources;
-   }
 
-   int128_t max_resource_delta = int128_t( max_payer_resources ) - int128_t( it->max_resources );
-   int128_t new_resources = int128_t( it->resources ) + max_resource_delta - int128_t( trx_resource_limit );
+   auto arr = util::converter::to< address_resource_record >( *obj );
+
+   int128_t max_resource_delta = int128_t( max_payer_resources ) - int128_t( arr.max_rc() );
+   int128_t new_resources = int128_t( arr.current_rc() ) + max_resource_delta - int128_t( trx_resource_limit );
    return new_resources >= 0;
 }
 
@@ -224,7 +146,6 @@ bool mempool_impl::check_pending_account_resources(
    uint64_t max_payer_rc,
    uint64_t rc_limit ) const
 {
-   std::lock_guard< std::mutex > guard( _account_resources_mutex );
    return check_pending_account_resources_lockfree( payer, max_payer_rc, rc_limit );
 }
 
@@ -236,198 +157,160 @@ uint64_t mempool_impl::add_pending_transaction(
    uint64_t network_bandwidth_used,
    uint64_t compute_bandwidth_used )
 {
-   const auto& payer = transaction.header().payer();
-   uint64_t rc_limit = transaction.header().rc_limit();
-   uint64_t rc_used = rc_limit;
+   uint64_t rc_used = 0;
 
+   KOINOS_ASSERT(
+      check_pending_account_resources_lockfree( transaction.header().payer(), max_payer_rc, transaction.header().rc_limit() ),
+      pending_transaction_exceeds_resources,
+      "transaction would exceed maximum resources for account: ${a}", ("a", util::encode_base58( util::converter::as< std::vector< std::byte > >( transaction.header().payer() )) )
+   );
+
+   KOINOS_ASSERT(
+      _state_node->get_object( space::transaction_index(), transaction.id() ) == nullptr,
+      pending_transaction_insertion_failure,
+      "cannot insert duplicate transaction"
+   );
+
+   auto state_node = _state_node->create_anonymous_node();
+
+   // Grab the latest metadata object if it exists
+   mempool_metadata metadata;
+   if ( auto obj = state_node->get_object( space::mempool_metadata(), std::string{} ); obj )
+      metadata = util::converter::to< mempool_metadata >( *obj );
+   else
+      metadata.set_seq_num( 1 );
+
+   uint64_t tx_id = metadata.seq_num();
+
+   metadata.set_seq_num( metadata.seq_num() + 1 );
+
+   // Update metadata
+   if ( auto obj = util::converter::as< std::string >( metadata ); !obj.empty() )
+      state_node->put_object( space::mempool_metadata(), std::string{}, &obj );
+
+   pending_transaction_record pending_tx;
+   *pending_tx.mutable_transaction() = transaction;
+   pending_tx.set_timestamp( std::chrono::duration_cast< std::chrono::milliseconds >( time.time_since_epoch() ).count() );
+   pending_tx.set_disk_storage_used( disk_storaged_used );
+   pending_tx.set_network_bandwidth_used( network_bandwidth_used );
+   pending_tx.set_compute_bandwidth_used( compute_bandwidth_used );
+
+   std::string transaction_index_bytes = util::converter::as< std::string >( tx_id );
+   auto pending_transaction_bytes = util::converter::as< std::string >( pending_tx );
+
+   state_node->put_object( space::pending_transaction(), transaction_index_bytes, &pending_transaction_bytes );
+   state_node->put_object( space::transaction_index(), transaction.id(), &transaction_index_bytes );
+
+   address_resource_record arr;
+   if ( auto obj = state_node->get_object( space::address_resources(), transaction.header().payer() ); obj )
    {
-      std::lock_guard< std::mutex > guard( _account_resources_mutex );
+      arr = util::converter::to< address_resource_record >( *obj );
 
-      KOINOS_ASSERT(
-         check_pending_account_resources_lockfree( payer, max_payer_rc, rc_limit ),
-         pending_transaction_exceeds_resources,
-         "transaction would exceed maximum resources for account: ${a}", ("a", util::encode_base58( util::converter::as< std::vector< std::byte > >( payer )))
-      );
+      int128_t max_rc_delta = int128_t( max_payer_rc ) - int128_t( arr.max_rc() );
+      int128_t new_rc = int128_t( arr.current_rc() ) + max_rc_delta - int128_t( transaction.header().rc_limit() );
 
-      {
-         auto id = util::converter::to< transaction_id_type >( transaction.id() );
-         auto nonce_value = util::converter::to< chain::value_type >( transaction.header().nonce() );
+      arr.set_max_rc( max_payer_rc );
+      arr.set_current_rc( new_rc.convert_to< uint64_t >() );
 
-         KOINOS_ASSERT(
-            nonce_value.has_uint64_value(),
-            pending_transaction_insertion_failure,
-            "transaction nonce did not contain uint64 value"
-         );
+      rc_used = max_payer_rc - arr.current_rc();
+   }
+   else
+   {
+      arr.set_max_rc( max_payer_rc );
+      arr.set_current_rc( max_payer_rc - transaction.header().rc_limit() );
 
-         nonce_type nonce = nonce_value.uint64_value();
-
-         std::lock_guard< std::mutex > guard( _pending_transaction_mutex );
-
-         /*
-          * We use two synchronized data structures to store transaction ordering
-          * The first is a simple FIFO queue of transactions
-          * The second is a boost multi index container (BMIC) whose primary responsibility is to re-order transactions with
-          * conflicting payers. The BMIC contains a wrapper class which just contains an iterator in to the FIFO queue.
-          * The FIFO queue is an std::list which guarantees iterator validity on all modifications, so the BMIC iterators
-          * are valid in all cases.
-          *
-          * When a new transaction is added that has the same payer as another, we want to insert it in the FIFO queue
-          * immediately prior to the fist nonce that is after the new transaction. We check for conflicting nonces
-          * using lower bound on the BMIC. If we find a transaction with the same payer, then it is the lowest nonce
-          * with the same payer. Because lower bound is leq, there is a chance the nonce is the same, in which case we want
-          * to assert and fail. Otherwise, insert in the FIFO queue before the found transaction. This will ensure a
-          * correct ordering of transactions for an account when pulled from the front of the FIFO queue.
-          *
-          * If no such transaction was found, there is no conflict, simply add the transaction at the end of the FIFO queue
-          */
-
-         const auto& account_nonce_idx = _pending_transaction_idx.get< by_account_nonce >();
-         auto account_nonce_iterator = account_nonce_idx.lower_bound( boost::make_tuple( payer, nonce ) );
-
-         pending_transaction_iterator transaction_iterator;
-         pending_transaction_object pending_transaction {
-            .transaction            = transaction,
-            .time                   = time,
-            .nonce                  = nonce,
-            .disk_storage_used      = disk_storaged_used,
-            .network_bandwidth_used = network_bandwidth_used,
-            .compute_bandwidth_used = compute_bandwidth_used
-         };
-
-         if ( account_nonce_iterator != account_nonce_idx.end() && account_nonce_iterator->payer() == payer )
-         {
-            KOINOS_ASSERT(
-               account_nonce_iterator->nonce() != nonce,
-               pending_transaction_insertion_failure,
-               "transaction account nonce conflicts with existing transaction in mempool - account: ${a}, nonce: ${n}",
-               ("a", util::to_base58( payer ) )( "n", nonce )
-            );
-
-            transaction_iterator = _pending_transactions.emplace( account_nonce_iterator->iterator, std::move( pending_transaction ) );
-         }
-         else
-         {
-            _pending_transactions.push_back( std::move( pending_transaction ) );
-            transaction_iterator = --_pending_transactions.end();
-         }
-
-         KOINOS_ASSERT( transaction_iterator != _pending_transactions.end(), pending_transaction_insertion_failure, "failed to insert transaction with id: ${id}", ("id", id) );
-
-         auto rval = _pending_transaction_idx.emplace( pending_transaction_iterator_wrapper{ transaction_iterator } );
-         if ( !rval.second )
-         {
-            _pending_transactions.erase( transaction_iterator );
-            KOINOS_ASSERT( false, pending_transaction_insertion_failure, "failed to insert transaction with id: ${id}", ("id", id) );
-         }
-      }
-
-      auto& account_idx = _account_resources_idx.get< by_account >();
-      auto it = account_idx.find( payer );
-
-      if ( it == account_idx.end() )
-      {
-         _account_resources_idx.insert( account_resources_object {
-            .account       = payer,
-            .resources     = max_payer_rc - rc_limit,
-            .max_resources = max_payer_rc,
-            .time          = time
-         } );
-      }
-      else
-      {
-         int128_t max_resource_delta = int128_t( max_payer_rc ) - int128_t( it->max_resources );
-         int128_t new_resources = int128_t( it->resources ) + max_resource_delta - int128_t( rc_limit );
-
-         account_idx.modify( it, [&]( account_resources_object& aro )
-         {
-            aro.max_resources = max_payer_rc;
-            aro.resources     = new_resources.convert_to< uint64_t >();
-            aro.time          = time;
-         } );
-
-         rc_used = max_payer_rc - it->resources;
-      }
+      rc_used = transaction.header().rc_limit();
    }
 
+   auto address_resource_bytes = util::converter::as< std::string >( arr );
+   state_node->put_object( space::address_resources(), transaction.header().payer(), &address_resource_bytes );
+
+   state_node->commit();
+
    LOG(debug) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
+
    return rc_used;
 }
 
 std::pair< uint64_t, uint64_t > mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
-   std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
-   std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
+   uint64_t count = 0;
 
-   std::size_t count = 0;
+   auto node = _state_node->create_anonymous_node();
+
    for ( const auto& id : ids )
    {
-      auto& id_idx = _pending_transaction_idx.get< by_id >();
+      auto seq_obj = node->get_object( space::transaction_index(), id );
+      if ( !seq_obj )
+         continue;
 
-      auto itr = id_idx.find( id );
-      if ( itr != id_idx.end() )
-      {
-         LOG(debug) << "Removing included transaction from mempool: " << util::to_hex( itr->iterator->transaction.id() );
-         cleanup_account_resources( *(itr->iterator) );
-         _pending_transactions.erase( itr->iterator );
-         id_idx.erase( itr );
-         count++;
-      }
+      auto ptx_obj = node->get_object( space::pending_transaction(), *seq_obj );
+      if ( !ptx_obj )
+         continue;
+
+      auto pending_tx = util::converter::to< pending_transaction_record >( *ptx_obj );
+
+      cleanup_account_resources( node, pending_tx );
+      node->remove_object( space::pending_transaction(), *seq_obj );
+      node->remove_object( space::transaction_index(), id );
+
+      count++;
    }
 
-   return std::make_pair( count, _pending_transactions.size() );
+   node->commit();
+
+   return std::make_pair( count, 0 );
 }
 
 uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
-   std::lock_guard< std::mutex > account_guard( _account_resources_mutex );
-   std::lock_guard< std::mutex > trx_guard( _pending_transaction_mutex );
+   uint64_t count = 0;
 
-   auto& by_time_idx = _pending_transaction_idx.get< by_time >();
-   auto itr = by_time_idx.begin();
+   auto node = _state_node->create_anonymous_node();
 
-   std::size_t count = 0;
-   while ( itr != by_time_idx.end() && itr->time() + expiration <= now )
+   for (;;)
    {
-      LOG(debug) << "Pruning transaction from mempool: " << util::to_hex( itr->id() );
-      cleanup_account_resources( *(itr->iterator) );
-      _pending_transactions.erase( itr->iterator );
-      by_time_idx.erase( itr );
-      itr = by_time_idx.begin();
+      auto [ ptx_obj, key ] = node->get_next_object( space::pending_transaction(), std::string{} );
+      if ( !ptx_obj )
+         break;
+
+      auto pending_tx = util::converter::to< pending_transaction_record >( *ptx_obj );
+
+      std::chrono::system_clock::time_point time { std::chrono::milliseconds { pending_tx.timestamp() } };
+      if ( time + expiration > now )
+         break;
+
+      auto tx_idx_obj = node->get_object( space::transaction_index(), pending_tx.transaction().id() );
+      assert( tx_idx_obj );
+
+      cleanup_account_resources( node, pending_tx );
+      node->remove_object( space::pending_transaction(), key );
+      node->remove_object( space::transaction_index(), pending_tx.transaction().id() );
+
       count++;
    }
+
+   node->commit();
 
    return count;
 }
 
-std::size_t mempool_impl::payer_entries_size() const
+void mempool_impl::cleanup_account_resources( state_db::anonymous_state_node_ptr node, const pending_transaction_record& pending_trx )
 {
-   std::lock_guard< std::mutex > guard( _account_resources_mutex );
-   return _account_resources_idx.size();
-}
+   auto obj = node->get_object( space::address_resources(), pending_trx.transaction().header().payer() );
+   assert( obj );
 
-void mempool_impl::cleanup_account_resources( const pending_transaction_object& pending_trx )
-{
-   auto itr = _account_resources_idx.find( pending_trx.payer() );
-   if ( itr != _account_resources_idx.end() )
+   auto arr = util::converter::to< address_resource_record >( *obj );
+   if ( arr.current_rc() + pending_trx.transaction().header().rc_limit() >= arr.max_rc() )
    {
-      if ( itr->resources + pending_trx.rc_limit() >= itr->max_resources )
-      {
-         _account_resources_idx.erase( itr );
-      }
-      else
-      {
-         _account_resources_idx.modify( itr, [&]( account_resources_object& aro )
-         {
-            aro.resources += pending_trx.rc_limit();
-         } );
-      }
+      node->remove_object( space::address_resources(), pending_trx.transaction().header().payer() );
    }
-}
-
-std::size_t mempool_impl::pending_transaction_count() const
-{
-   std::lock_guard< std::mutex > lock_guard( _pending_transaction_mutex );
-   return _pending_transactions.size();
+   else
+   {
+      arr.set_current_rc( arr.current_rc() + pending_trx.transaction().header().rc_limit() );
+      auto arr_obj = util::converter::as< std::string >( arr );
+      node->put_object( space::address_resources(), pending_trx.transaction().header().payer(), &arr_obj );
+   }
 }
 
 } // detail
@@ -472,16 +355,6 @@ std::pair< uint64_t, uint64_t > mempool::remove_pending_transactions( const std:
 uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
    return _my->prune( expiration, now );
-}
-
-std::size_t mempool::payer_entries_size() const
-{
-   return _my->payer_entries_size();
-}
-
-std::size_t mempool::pending_transaction_count() const
-{
-   return _my->pending_transaction_count();
 }
 
 } // koinos::mempool

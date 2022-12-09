@@ -23,6 +23,13 @@ KOINOS_DECLARE_EXCEPTION( pending_transaction_insertion_failure );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_exceeds_resources );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_request_overflow );
 
+enum class fork_resolution_algorithm
+{
+   fifo,
+   block_time,
+   pob
+};
+
 namespace detail { class mempool_impl; }
 
 class mempool final
@@ -51,8 +58,6 @@ public:
    std::vector< rpc::mempool::pending_transaction > get_pending_transactions( std::size_t limit = MAX_PENDING_TRANSACTION_REQUEST );
    std::pair< uint64_t, uint64_t > remove_pending_transactions( const std::vector< transaction_id_type >& ids );
    uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now = std::chrono::system_clock::now() );
-   std::size_t payer_entries_size() const;
-   std::size_t pending_transaction_count() const;
 };
 
 } // koinos::mempool

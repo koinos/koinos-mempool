@@ -117,7 +117,6 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
 {
    mempool::mempool mempool;
-   protocol::transaction trx;
    mempool::account_type payer = _key1.get_public_key().to_address_bytes();;
    uint64_t max_payer_resources = 1000000000000;
    uint64_t trx_resource_limit;
@@ -126,6 +125,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
 
    for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST + 1; i++ )
    {
+      protocol::transaction trx;
       nonce_value.set_uint64_value( i + 1 );
 
       trx.mutable_header()->set_rc_limit( 10 * i );
@@ -206,7 +206,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    mempool.add_pending_transaction( trx, now + 1s, max_payer_resources, 1, 1, 1 );
 
    auto pending_trxs = mempool.get_pending_transactions();
-   BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 3 );
    BOOST_REQUIRE_EQUAL( pending_trxs.size(), 4 );
    for ( size_t i = 0; i < pending_trxs.size(); i++ )
    {
@@ -215,7 +214,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
    mempool.prune( 1s, now + 1s );
    pending_trxs = mempool.get_pending_transactions();
-   BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 2 );
    BOOST_REQUIRE_EQUAL( pending_trxs.size(), 2 );
    for ( size_t i = 0; i < pending_trxs.size(); i++ )
    {
@@ -224,7 +222,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
    mempool.prune( 1s, now + 2s );
    pending_trxs = mempool.get_pending_transactions();
-   BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 0 );
    BOOST_REQUIRE_EQUAL( pending_trxs.size(), 0 );
 }
 
@@ -310,93 +307,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
       mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ),
       mempool::pending_transaction_exceeds_resources
    );
-}
-
-BOOST_AUTO_TEST_CASE( mempool_nonce_test )
-{
-   mempool::mempool mempool;
-
-   auto payer = _key1.get_public_key().to_address_bytes();
-   uint64_t max_payer_resources = 1000000000000ull;
-   chain::value_type nonce_value;
-
-   auto now = std::chrono::system_clock::now();
-
-   BOOST_TEST_MESSAGE( "adding pending transactions" );
-
-   protocol::transaction t1;
-   nonce_value.set_uint64_value( 2 );
-   t1.mutable_header()->set_rc_limit( 10 );
-   t1.mutable_header()->set_payer( payer );
-   t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t1.set_id( sign( _key1, t1 ) );
-   mempool.add_pending_transaction( t1, now, max_payer_resources, 1, 2, 3 );
-
-   protocol::transaction t2;
-   payer = _key2.get_public_key().to_address_bytes();
-   nonce_value.set_uint64_value( 2 );
-   t2.mutable_header()->set_rc_limit( 10 );
-   t2.mutable_header()->set_payer( payer );
-   t2.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t2.set_id( sign( _key2, t2 ) );
-   mempool.add_pending_transaction( t2, now + 1s, max_payer_resources, 1, 2, 3 );
-
-   protocol::transaction t3;
-   nonce_value.set_uint64_value( 3 );
-   payer = _key1.get_public_key().to_address_bytes();
-   t3.mutable_header()->set_rc_limit( 10 );
-   t3.mutable_header()->set_payer( payer );
-   t3.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t3.set_id( sign( _key1, t3 ) );
-   mempool.add_pending_transaction( t3, now + 2s, max_payer_resources, 1, 2, 3 );
-
-   protocol::transaction t4;
-   nonce_value.set_uint64_value( 1 );
-   t4.mutable_header()->set_rc_limit( 10 );
-   t4.mutable_header()->set_payer( payer );
-   t4.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t4.set_id( sign( _key1, t4 ) );
-   mempool.add_pending_transaction( t4, now + 3s, max_payer_resources, 1, 2, 3 );
-
-   protocol::transaction t5;
-   payer = _key2.get_public_key().to_address_bytes();
-   nonce_value.set_uint64_value( 1 );
-   t5.mutable_header()->set_rc_limit( 10 );
-   t5.mutable_header()->set_payer( payer );
-   t5.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t5.set_id( sign( _key2, t5 ) );
-   mempool.add_pending_transaction( t5, now + 4s, max_payer_resources, 1, 2, 3 );
-
-   BOOST_TEST_MESSAGE( "checking pending transaction list" );
-   // Order should be t4, t1, t5, t2, t3
-   // key1, key1, key2, key2, key1
-   auto pending_txs = mempool.get_pending_transactions();
-   BOOST_TEST_MESSAGE( "checking pending transactions size" );
-   BOOST_REQUIRE_EQUAL( pending_txs.size(), 5 );
-   BOOST_TEST_MESSAGE( "checking pending transaction ids" );
-   BOOST_REQUIRE( pending_txs[0].transaction().id() == t4.id() );
-   BOOST_REQUIRE( pending_txs[1].transaction().id() == t1.id() );
-   BOOST_REQUIRE( pending_txs[2].transaction().id() == t5.id() );
-   BOOST_REQUIRE( pending_txs[3].transaction().id() == t2.id() );
-   BOOST_REQUIRE( pending_txs[4].transaction().id() == t3.id() );
-
-   mempool.prune( 1s, now + 2s ); // Removes t1 and t2
-
-   pending_txs = mempool.get_pending_transactions();
-   BOOST_TEST_MESSAGE( "checking pending transactions size" );
-   BOOST_REQUIRE_EQUAL( pending_txs.size(), 3 );
-   BOOST_TEST_MESSAGE( "checking pending transaction ids" );
-   BOOST_REQUIRE( pending_txs[0].transaction().id() == t4.id() );
-   BOOST_REQUIRE( pending_txs[1].transaction().id() == t5.id() );
-   BOOST_REQUIRE( pending_txs[2].transaction().id() == t3.id() );
-
-   mempool.prune( 1s, now + 4s ); // Removed t3 and t4
-
-   pending_txs = mempool.get_pending_transactions();
-   BOOST_TEST_MESSAGE( "checking pending transactions size" );
-   BOOST_REQUIRE_EQUAL( pending_txs.size(), 1 );
-   BOOST_TEST_MESSAGE( "checking pending transaction ids" );
-   BOOST_REQUIRE( pending_txs[0].transaction().id() == t5.id() );
 }
 
 BOOST_AUTO_TEST_SUITE_END()
