@@ -26,19 +26,44 @@ class mempool_impl final
 {
 private:
    state_db::database _db;
-   state_db::state_node_ptr _state_node;
 
-   void cleanup_account_resources( state_db::anonymous_state_node_ptr node, const pending_transaction_record& pending_trx );
+   crypto::multihash tmp_id( crypto::multihash id ) const;
+   state_db::state_node_ptr relevant_node( std::optional< crypto::multihash > id, state_db::shared_lock_ptr lock ) const;
+   state_db::state_node_ptr relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const;
+
+   void cleanup_account_resources( state_db::state_node_ptr node, const pending_transaction_record& pending_trx );
+
+   uint64_t remove_pending_transactions( state_db::state_node_ptr node, const std::vector< transaction_id_type >& ids );
+
+   bool check_pending_account_resources(
+      state_db::anonymous_state_node_ptr node,
+      const account_type& payer,
+      uint64_t max_payer_resources,
+      uint64_t trx_resource_limit ) const;
+
+   uint64_t add_pending_transaction_to_fork(
+      state_db::anonymous_state_node_ptr node,
+      const protocol::transaction& transaction,
+      std::chrono::system_clock::time_point time,
+      uint64_t max_payer_rc,
+      uint64_t disk_storaged_used,
+      uint64_t network_bandwidth_used,
+      uint64_t compute_bandwidth_used );
+
 public:
    mempool_impl();
    virtual ~mempool_impl();
 
-   bool has_pending_transaction( const transaction_id_type& id ) const;
-   std::vector< rpc::mempool::pending_transaction > get_pending_transactions( uint64_t limit );
+   bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const;
+
+   std::vector< rpc::mempool::pending_transaction > get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id );
+
    bool check_pending_account_resources(
       const account_type& payer,
       uint64_t max_payer_resources,
-      uint64_t trx_resource_limit ) const;
+      uint64_t trx_resource_limit,
+      std::optional< crypto::multihash > block_id = {} ) const;
+
    uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
       std::chrono::system_clock::time_point time,
@@ -46,7 +71,9 @@ public:
       uint64_t disk_storaged_used,
       uint64_t network_bandwidth_used,
       uint64_t compute_bandwidth_used );
+
    uint64_t remove_pending_transactions( const std::vector< transaction_id_type >& ids );
+
    uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
 
    void handle_block( const koinos::broadcast::block_accepted& bam );
@@ -74,64 +101,140 @@ mempool_impl::mempool_impl()
    }
 
 
-   { _db.open( {}, []( state_db::state_node_ptr ){}, comp, _db.get_unique_lock() ); }
+   _db.open( {}, []( state_db::state_node_ptr ){}, comp, _db.get_unique_lock() );
 
    auto lock =_db.get_shared_lock();
-   _state_node = _db.create_writable_node( _db.get_head( lock )->id(), crypto::multihash::empty( crypto::multicodec::sha2_256 ), protocol::block_header(), lock );
+   auto node_id = _db.get_head( lock )->id();
+   [[maybe_unused]] auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
+   assert( node );
 }
 
 mempool_impl::~mempool_impl() = default;
+
+crypto::multihash mempool_impl::tmp_id( crypto::multihash id ) const
+{
+   return crypto::hash( crypto::multicodec::sha2_256, id );
+}
+
+state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::multihash > id, state_db::shared_lock_ptr lock ) const
+{
+   state_db::state_node_ptr node;
+
+   if ( id )
+   {
+      auto block_node = _db.get_node( *id, lock );
+      node = _db.get_node( tmp_id( block_node->id() ), lock );
+      assert( node );
+   }
+   else
+   {
+      auto block_node = _db.get_head( lock );
+      node = _db.get_node( tmp_id( block_node->id() ), lock );
+      assert( node );
+   }
+
+   return node;
+}
+
+state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const
+{
+   state_db::state_node_ptr node;
+
+   if ( id )
+   {
+      auto block_node = _db.get_node( *id, lock );
+      node = _db.get_node( tmp_id( block_node->id() ), lock );
+      assert( node );
+   }
+   else
+   {
+      auto block_node = _db.get_head( lock );
+      node = _db.get_node( tmp_id( block_node->id() ), lock );
+      assert( node );
+   }
+
+   return node;
+}
 
 void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
 {
    auto block_id = util::converter::to< crypto::multihash >( bam.block().id() );
    auto previous_id = util::converter::to< crypto::multihash >( bam.block().header().previous() );
-   auto db_lock = _db.get_shared_lock();
+   auto lock = _db.get_shared_lock();
 
    LOG(debug) << "Handling block - Height: " << bam.block().header().height() <<  ", ID: " << block_id;
 
-   state_db::state_node_ptr state_node;
+   crypto::multihash node_id;
 
-   // We are handling the genesis case
-   if ( _db.get_root( db_lock )->id() != _db.get_head( db_lock )->id() )
-      state_node = _db.create_writable_node( previous_id, block_id, bam.block().header(), db_lock );
-   else
-      state_node = _db.create_writable_node( crypto::multihash::zero( crypto::multicodec::sha2_256 ), block_id, bam.block().header(), db_lock );
+   try
+   {
+      auto root_id = _db.get_root( lock )->id();
 
-   assert( state_node );
+      // We are handling the genesis case
+      if ( root_id != _db.get_head( lock )->id() )
+         node_id = tmp_id( previous_id );
+      else
+         node_id = tmp_id( root_id );
 
-   std::vector< transaction_id_type > ids;
+      auto node = _db.get_node( node_id, lock );
+      assert( node );
 
-   for ( int i = 0; i < bam.block().transactions_size(); ++i )
-      ids.emplace_back( bam.block().transactions( i ).id() );
+      std::vector< transaction_id_type > ids;
 
-   const auto removed_count = remove_pending_transactions( ids );
+      for ( int i = 0; i < bam.block().transactions_size(); ++i )
+         ids.emplace_back( bam.block().transactions( i ).id() );
 
-   if ( bam.live() && removed_count )
-      LOG(info) << "Removed " << removed_count << " included transaction(s) via block - Height: "
-         << bam.block().header().height() << ", ID: " << util::to_hex( bam.block().id() );
+      const auto removed_count = remove_pending_transactions( node, ids );
+
+      auto new_id = util::converter::to< crypto::multihash >( bam.block().id() );
+      _db.update_node( node_id, new_id, bam.block().header(), lock );
+      node_id = new_id;
+
+      if ( bam.live() && removed_count )
+         LOG(info) << "Removed " << removed_count << " included transaction(s) via block - Height: "
+            << bam.block().header().height() << ", ID: " << util::to_hex( bam.block().id() );
+   }
+   catch ( ... )
+   {
+      _db.discard_node( node_id, lock );
+      assert( false );
+      throw;
+   }
+
+   _db.finalize_node( node_id, lock );
+   [[maybe_unused]] auto node = _db.create_writable_node( node_id, crypto::hash( crypto::multicodec::sha1, node_id ), protocol::block_header(), lock );
+   assert( node );
 }
 
 void mempool_impl::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )
 {
    auto block_id = util::converter::to< crypto::multihash >( bi.topology().id() );
-   auto db_lock = _db.get_unique_lock();
-   if ( auto lib = _db.get_node( block_id, db_lock ); lib )
-      _db.commit_node( block_id, db_lock );
+   auto lock = _db.get_unique_lock();
+   if ( auto lib = _db.get_node( block_id, lock ); lib )
+      _db.commit_node( block_id, lock );
 }
 
-bool mempool_impl::has_pending_transaction( const transaction_id_type& id ) const
+bool mempool_impl::has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const
 {
-   return _state_node->get_object( space::transaction_index(), id ) != nullptr;
+   auto lock = _db.get_shared_lock();
+
+   if ( auto node = relevant_node( block_id, lock ); node )
+      return node->get_object( space::transaction_index(), id ) != nullptr;
+
+   return false;
 }
 
-std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_transactions( uint64_t limit )
+std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
    KOINOS_ASSERT(
       limit <= constants::max_pending_transaction_request,
       pending_transaction_request_overflow,
       "requested too many pending transactions. max: ${max}", ("max", constants::max_pending_transaction_request)
    );
+
+   auto lock = _db.get_shared_lock();
+
+   auto node = relevant_node( block_id, lock );
 
    std::vector< rpc::mempool::pending_transaction > pending_transactions;
    pending_transactions.reserve( limit );
@@ -140,7 +243,7 @@ std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_trans
 
    while ( pending_transactions.size() < limit )
    {
-      auto [ value, key ] = _state_node->get_next_object( space::pending_transaction(), next );
+      auto [ value, key ] = node->get_next_object( space::pending_transaction(), next );
 
       if ( !value )
          break;
@@ -165,21 +268,38 @@ std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_trans
 bool mempool_impl::check_pending_account_resources(
    const account_type& payer,
    uint64_t max_payer_resources,
-   uint64_t trx_resource_limit ) const
+   uint64_t trx_resource_limit,
+   std::optional< crypto::multihash > block_id ) const
 {
-   auto obj = _state_node->get_object( space::address_resources(), payer );
+   auto lock = _db.get_shared_lock();
 
-   if ( !obj )
-      return trx_resource_limit <= max_payer_resources;
+   state_db::state_node_ptr node;
 
-   auto arr = util::converter::to< address_resource_record >( *obj );
+   node = relevant_node( block_id, lock );
 
-   int128_t max_resource_delta = int128_t( max_payer_resources ) - int128_t( arr.max_rc() );
-   int128_t new_resources = int128_t( arr.current_rc() ) + max_resource_delta - int128_t( trx_resource_limit );
-   return new_resources >= 0;
+   return check_pending_account_resources( node->create_anonymous_node(), payer, max_payer_resources, trx_resource_limit );
 }
 
-uint64_t mempool_impl::add_pending_transaction(
+bool mempool_impl::check_pending_account_resources(
+   state_db::anonymous_state_node_ptr node,
+   const account_type& payer,
+   uint64_t max_payer_resources,
+   uint64_t trx_resource_limit ) const
+{
+   if ( auto obj = node->get_object( space::address_resources(), payer ); obj )
+   {
+      auto arr = util::converter::to< address_resource_record >( *obj );
+
+      int128_t max_resource_delta = int128_t( max_payer_resources ) - int128_t( arr.max_rc() );
+      int128_t new_resources = int128_t( arr.current_rc() ) + max_resource_delta - int128_t( trx_resource_limit );
+      return new_resources >= 0;
+   }
+
+   return trx_resource_limit <= max_payer_resources;
+}
+
+uint64_t mempool_impl::add_pending_transaction_to_fork(
+   state_db::anonymous_state_node_ptr node,
    const protocol::transaction& transaction,
    std::chrono::system_clock::time_point time,
    uint64_t max_payer_rc,
@@ -190,22 +310,20 @@ uint64_t mempool_impl::add_pending_transaction(
    uint64_t rc_used = 0;
 
    KOINOS_ASSERT(
-      check_pending_account_resources( transaction.header().payer(), max_payer_rc, transaction.header().rc_limit() ),
+      check_pending_account_resources( node, transaction.header().payer(), max_payer_rc, transaction.header().rc_limit() ),
       pending_transaction_exceeds_resources,
       "transaction would exceed maximum resources for account: ${a}", ("a", util::encode_base58( util::converter::as< std::vector< std::byte > >( transaction.header().payer() )) )
    );
 
    KOINOS_ASSERT(
-      _state_node->get_object( space::transaction_index(), transaction.id() ) == nullptr,
+      node->get_object( space::transaction_index(), transaction.id() ) == nullptr,
       pending_transaction_insertion_failure,
       "cannot insert duplicate transaction"
    );
 
-   auto state_node = _state_node->create_anonymous_node();
-
    // Grab the latest metadata object if it exists
    mempool_metadata metadata;
-   if ( auto obj = state_node->get_object( space::mempool_metadata(), std::string{} ); obj )
+   if ( auto obj = node->get_object( space::mempool_metadata(), std::string{} ); obj )
       metadata = util::converter::to< mempool_metadata >( *obj );
    else
       metadata.set_seq_num( 1 );
@@ -216,7 +334,7 @@ uint64_t mempool_impl::add_pending_transaction(
 
    // Update metadata
    if ( auto obj = util::converter::as< std::string >( metadata ); !obj.empty() )
-      state_node->put_object( space::mempool_metadata(), std::string{}, &obj );
+      node->put_object( space::mempool_metadata(), std::string{}, &obj );
 
    pending_transaction_record pending_tx;
    *pending_tx.mutable_transaction() = transaction;
@@ -228,11 +346,11 @@ uint64_t mempool_impl::add_pending_transaction(
    std::string transaction_index_bytes = util::converter::as< std::string >( tx_id );
    auto pending_transaction_bytes = util::converter::as< std::string >( pending_tx );
 
-   state_node->put_object( space::pending_transaction(), transaction_index_bytes, &pending_transaction_bytes );
-   state_node->put_object( space::transaction_index(), transaction.id(), &transaction_index_bytes );
+   node->put_object( space::pending_transaction(), transaction_index_bytes, &pending_transaction_bytes );
+   node->put_object( space::transaction_index(), transaction.id(), &transaction_index_bytes );
 
    address_resource_record arr;
-   if ( auto obj = state_node->get_object( space::address_resources(), transaction.header().payer() ); obj )
+   if ( auto obj = node->get_object( space::address_resources(), transaction.header().payer() ); obj )
    {
       arr = util::converter::to< address_resource_record >( *obj );
 
@@ -253,9 +371,55 @@ uint64_t mempool_impl::add_pending_transaction(
    }
 
    auto address_resource_bytes = util::converter::as< std::string >( arr );
-   state_node->put_object( space::address_resources(), transaction.header().payer(), &address_resource_bytes );
+   node->put_object( space::address_resources(), transaction.header().payer(), &address_resource_bytes );
 
-   state_node->commit();
+   return rc_used;
+}
+
+uint64_t mempool_impl::add_pending_transaction(
+   const protocol::transaction& transaction,
+   std::chrono::system_clock::time_point time,
+   uint64_t max_payer_rc,
+   uint64_t disk_storaged_used,
+   uint64_t network_bandwidth_used,
+   uint64_t compute_bandwidth_used )
+{
+   uint64_t rc_used = 0;
+
+   auto lock = _db.get_shared_lock();
+   auto nodes = _db.get_fork_heads( lock );
+
+   try
+   {
+      std::vector< state_db::anonymous_state_node_ptr > anonymous_state_nodes;
+
+      for ( auto block_node : nodes )
+      {
+         auto pending_node = relevant_node( block_node->id(), lock );
+         assert( pending_node );
+         auto node = pending_node->create_anonymous_node();
+         anonymous_state_nodes.push_back( node );
+
+         auto rc = add_pending_transaction_to_fork( node, transaction, time, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
+
+         // We're only returning the RC used as it pertains to head
+         if ( block_node->id() == _db.get_head( lock )->id() )
+            rc_used = rc;
+      }
+
+      for ( auto anonymous_state_node : anonymous_state_nodes )
+         anonymous_state_node->commit();
+   }
+   catch ( const std::exception& e )
+   {
+      LOG(debug) << "Failed to apply pending transaction " << util::to_hex( transaction.id() ) << " with: " << e.what();
+      throw;
+   }
+   catch ( ... )
+   {
+      LOG(debug) << "Failed to apply pending transaction " << util::to_hex( transaction.id() );
+      throw;
+   }
 
    LOG(debug) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
 
@@ -265,8 +429,26 @@ uint64_t mempool_impl::add_pending_transaction(
 uint64_t mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
    uint64_t count = 0;
+   auto lock = _db.get_shared_lock();
+   auto nodes = _db.get_fork_heads( lock );
 
-   auto node = _state_node->create_anonymous_node();
+   for ( auto block_node : nodes )
+   {
+      auto node = _db.get_node( tmp_id( block_node->id() ), lock );
+
+      auto num_removed = remove_pending_transactions( node, ids );
+
+      // We're only returning the number of transactions removed as it pertains to head
+      if ( block_node->id() == _db.get_head( lock )->id() )
+         count = num_removed;
+   }
+
+   return count;
+}
+
+uint64_t mempool_impl::remove_pending_transactions( state_db::state_node_ptr node, const std::vector< transaction_id_type >& ids )
+{
+   uint64_t count = 0;
 
    for ( const auto& id : ids )
    {
@@ -286,45 +468,50 @@ uint64_t mempool_impl::remove_pending_transactions( const std::vector< transacti
       count++;
    }
 
-   node->commit();
-
    return count;
 }
 
 uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
    uint64_t count = 0;
+   auto lock = _db.get_shared_lock();
+   auto nodes = _db.get_fork_heads( lock );
 
-   auto node = _state_node->create_anonymous_node();
-
-   for (;;)
+   for ( auto block_node : nodes )
    {
-      auto [ ptx_obj, key ] = node->get_next_object( space::pending_transaction(), std::string{} );
-      if ( !ptx_obj )
-         break;
+      auto node = relevant_node( block_node->id(), lock );
 
-      auto pending_tx = util::converter::to< pending_transaction_record >( *ptx_obj );
+      bool is_head = block_node->id() == _db.get_head( lock )->id();
 
-      std::chrono::system_clock::time_point time { std::chrono::milliseconds { pending_tx.timestamp() } };
-      if ( time + expiration > now )
-         break;
+      for (;;)
+      {
+         auto [ ptx_obj, key ] = node->get_next_object( space::pending_transaction(), std::string{} );
+         if ( !ptx_obj )
+            break;
 
-      auto tx_idx_obj = node->get_object( space::transaction_index(), pending_tx.transaction().id() );
-      assert( tx_idx_obj );
+         auto pending_tx = util::converter::to< pending_transaction_record >( *ptx_obj );
 
-      cleanup_account_resources( node, pending_tx );
-      node->remove_object( space::pending_transaction(), key );
-      node->remove_object( space::transaction_index(), pending_tx.transaction().id() );
+         std::chrono::system_clock::time_point time { std::chrono::milliseconds { pending_tx.timestamp() } };
+         if ( time + expiration > now )
+            break;
 
-      count++;
+         auto tx_idx_obj = node->get_object( space::transaction_index(), pending_tx.transaction().id() );
+         assert( tx_idx_obj );
+
+         cleanup_account_resources( node, pending_tx );
+         node->remove_object( space::pending_transaction(), key );
+         node->remove_object( space::transaction_index(), pending_tx.transaction().id() );
+
+         // Only consider pruned transactions on the fork considered head
+         if ( is_head )
+            count++;
+      }
    }
-
-   node->commit();
 
    return count;
 }
 
-void mempool_impl::cleanup_account_resources( state_db::anonymous_state_node_ptr node, const pending_transaction_record& pending_trx )
+void mempool_impl::cleanup_account_resources( state_db::state_node_ptr node, const pending_transaction_record& pending_trx )
 {
    auto obj = node->get_object( space::address_resources(), pending_trx.transaction().header().payer() );
    assert( obj );
@@ -347,22 +534,23 @@ void mempool_impl::cleanup_account_resources( state_db::anonymous_state_node_ptr
 mempool::mempool() : _my( std::make_unique< detail::mempool_impl >() ) {}
 mempool::~mempool() = default;
 
-bool mempool::has_pending_transaction( const transaction_id_type& id ) const
+bool mempool::has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const
 {
-   return _my->has_pending_transaction( id );
+   return _my->has_pending_transaction( id, block_id );
 }
 
-std::vector< rpc::mempool::pending_transaction > mempool::get_pending_transactions( uint64_t limit )
+std::vector< rpc::mempool::pending_transaction > mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
-   return _my->get_pending_transactions( limit );
+   return _my->get_pending_transactions( limit, block_id );
 }
 
 bool mempool::check_pending_account_resources(
    const account_type& payer,
    uint64_t max_payer_resources,
-   uint64_t trx_resource_limit ) const
+   uint64_t trx_resource_limit,
+   std::optional< crypto::multihash > block_id ) const
 {
-   return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit );
+   return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit, block_id );
 }
 
 uint64_t mempool::add_pending_transaction(

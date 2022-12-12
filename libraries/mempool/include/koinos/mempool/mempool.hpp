@@ -45,8 +45,9 @@ public:
 
    bool check_pending_account_resources(
       const account_type& payer,
-      uint64_t max_payer_rc,
-      uint64_t rc_limit )const;
+      uint64_t max_payer_resources,
+      uint64_t trx_resource_limit,
+      std::optional< crypto::multihash > block_id = {} ) const;
 
    uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
@@ -56,10 +57,19 @@ public:
       uint64_t network_bandwidth_used,
       uint64_t compute_bandwidth_used );
 
-   bool has_pending_transaction( const transaction_id_type& id )const;
-   std::vector< rpc::mempool::pending_transaction > get_pending_transactions( uint64_t limit = constants::max_pending_transaction_request );
+   bool has_pending_transaction(
+      const transaction_id_type& id,
+      std::optional< crypto::multihash > block_id = {} ) const;
+
+   std::vector< rpc::mempool::pending_transaction > get_pending_transactions(
+      uint64_t limit = constants::max_pending_transaction_request,
+      std::optional< crypto::multihash > block_id = {} );
+
    uint64_t remove_pending_transactions( const std::vector< transaction_id_type >& ids );
-   uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now = std::chrono::system_clock::now() );
+
+   uint64_t prune(
+      std::chrono::seconds expiration,
+      std::chrono::system_clock::time_point now = std::chrono::system_clock::now() );
 
    void handle_block( const koinos::broadcast::block_accepted& bam );
    void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
