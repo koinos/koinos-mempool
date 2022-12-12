@@ -40,7 +40,7 @@ private:
    std::unique_ptr< detail::mempool_impl > _my;
 
 public:
-   mempool();
+   mempool( fork_resolution_algorithm algo = fork_resolution_algorithm::fifo );
    virtual ~mempool();
 
    bool check_pending_account_resources(

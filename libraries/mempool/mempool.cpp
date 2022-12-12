@@ -51,7 +51,7 @@ private:
       uint64_t compute_bandwidth_used );
 
 public:
-   mempool_impl();
+   mempool_impl( fork_resolution_algorithm algo );
    virtual ~mempool_impl();
 
    bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const;
@@ -80,11 +80,9 @@ public:
    void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
 
-mempool_impl::mempool_impl()
+mempool_impl::mempool_impl( fork_resolution_algorithm algo )
 {
    state_db::state_node_comparator_function comp;
-
-   auto algo = fork_resolution_algorithm::pob;
 
    switch ( algo )
    {
@@ -531,7 +529,7 @@ void mempool_impl::cleanup_account_resources( state_db::state_node_ptr node, con
 
 } // detail
 
-mempool::mempool() : _my( std::make_unique< detail::mempool_impl >() ) {}
+mempool::mempool( fork_resolution_algorithm algo ) : _my( std::make_unique< detail::mempool_impl >( algo ) ) {}
 mempool::~mempool() = default;
 
 bool mempool::has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const

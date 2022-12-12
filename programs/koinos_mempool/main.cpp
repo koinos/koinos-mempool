@@ -25,6 +25,10 @@
 
 #include "git_version.h"
 
+#define FIFO_ALGORITHM                 "fifo"
+#define BLOCK_TIME_ALGORITHM           "block-time"
+#define POB_ALGORITHM                  "pob"
+
 #define HELP_OPTION                    "help"
 #define VERSION_OPTION                 "version"
 #define BASEDIR_OPTION                 "basedir"
@@ -37,6 +41,8 @@
 #define JOBS_DEFAULT                   uint64_t( 2 )
 #define TRANSACTION_EXPIRATION_OPTION  "transaction-expiration"
 #define TRANSACTION_EXPIRATION_DEFAULT 120
+#define FORK_ALGORITHM_OPTION          "fork-algorithm"
+#define FORK_ALGORITHM_DEFAULT         FIFO_ALGORITHM
 
 KOINOS_DECLARE_EXCEPTION( service_exception );
 KOINOS_DECLARE_DERIVED_EXCEPTION( invalid_argument, service_exception );
@@ -91,7 +97,8 @@ int main( int argc, char** argv )
          (LOG_LEVEL_OPTION             ",l", program_options::value< std::string >(), "The log filtering level")
          (INSTANCE_ID_OPTION           ",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
          (JOBS_OPTION                  ",j", program_options::value< uint64_t >(), "The number of worker jobs")
-         (TRANSACTION_EXPIRATION_OPTION",e", program_options::value< uint64_t >(), "The number of seconds a transaction should expire in");
+         (TRANSACTION_EXPIRATION_OPTION",e", program_options::value< uint64_t >(), "The number of seconds a transaction should expire in")
+         (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -131,11 +138,12 @@ int main( int argc, char** argv )
          mempool_config = config[ util::service::mempool ];
       }
 
-      auto amqp_url      = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
-      auto log_level     = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
-      auto instance_id   = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
-      auto jobs          = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
-      auto tx_expiration = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
+      auto amqp_url           = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
+      auto log_level          = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
+      auto instance_id        = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
+      auto jobs               = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
+      auto tx_expiration      = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
+      auto fork_algorithm_opt = util::get_option< std::string >( FORK_ALGORITHM_OPTION, FORK_ALGORITHM_DEFAULT, args, mempool_config, global_config );
 
       koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool / "logs" );
 
@@ -146,6 +154,27 @@ int main( int argc, char** argv )
       if ( config.IsNull() )
       {
          LOG(warning) << "Could not find config (config.yml or config.yaml expected), using default values";
+      }
+
+      mempool::fork_resolution_algorithm fork_algorithm;
+      if ( fork_algorithm_opt == FIFO_ALGORITHM )
+      {
+         LOG(info) << "Using fork resolution algorithm: " << FIFO_ALGORITHM;
+         fork_algorithm = mempool::fork_resolution_algorithm::fifo;
+      }
+      else if ( fork_algorithm_opt == BLOCK_TIME_ALGORITHM )
+      {
+         LOG(info) << "Using fork resolution algorithm: " << BLOCK_TIME_ALGORITHM;
+         fork_algorithm = mempool::fork_resolution_algorithm::block_time;
+      }
+      else if ( fork_algorithm_opt == POB_ALGORITHM )
+      {
+         LOG(info) << "Using fork resolution algorithm: " << POB_ALGORITHM;
+         fork_algorithm = mempool::fork_resolution_algorithm::pob;
+      }
+      else
+      {
+         KOINOS_THROW( invalid_argument, "${a} is not a valid fork algorithm", ("a", fork_algorithm_opt) );
       }
 
       LOG(info) << "Starting mempool...";
@@ -172,7 +201,7 @@ int main( int argc, char** argv )
       for ( std::size_t i = 0; i < jobs; i++ )
          threads.emplace_back( [&]() { server_ioc.run(); } );
 
-      std::shared_ptr< koinos::mempool::mempool > mempool = std::make_shared< koinos::mempool::mempool >();
+      std::shared_ptr< koinos::mempool::mempool > mempool = std::make_shared< koinos::mempool::mempool >( fork_algorithm );
 
       request_handler.add_broadcast_handler(
          "koinos.block.irreversible",
