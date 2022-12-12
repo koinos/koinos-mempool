@@ -202,7 +202,7 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
    }
 
    _db.finalize_node( node_id, lock );
-   [[maybe_unused]] auto node = _db.create_writable_node( node_id, crypto::hash( crypto::multicodec::sha1, node_id ), protocol::block_header(), lock );
+   [[maybe_unused]] auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
    assert( node );
 }
 
@@ -434,7 +434,7 @@ uint64_t mempool_impl::remove_pending_transactions( const std::vector< transacti
 
    for ( auto block_node : nodes )
    {
-      auto node = _db.get_node( tmp_id( block_node->id() ), lock );
+      auto node = relevant_node( block_node->id(), lock );
 
       auto num_removed = remove_pending_transactions( node, ids );
 
