@@ -174,6 +174,33 @@ int main( int argc, char** argv )
 
       std::shared_ptr< koinos::mempool::mempool > mempool = std::make_shared< koinos::mempool::mempool >();
 
+      request_handler.add_broadcast_handler(
+         "koinos.block.irreversible",
+         [&]( const std::string& msg )
+         {
+            koinos::broadcast::block_irreversible block_irr;
+
+            if ( !block_irr.ParseFromString( msg ) )
+            {
+               LOG(warning) << "Could not parse block irreversible broadcast";
+               return;
+            }
+
+            try
+            {
+               mempool->handle_irreversibility( block_irr );
+            }
+            catch ( const koinos::exception& e )
+            {
+               LOG(info) << "Could not process block irreversibility: " << e.what();
+            }
+            catch ( const std::exception& e )
+            {
+               LOG(info) << "Could not process block irreversibility: " << e.what();
+            }
+         }
+      );
+
       request_handler.add_rpc_handler(
          util::service::mempool,
          [&]( const std::string& msg ) -> std::string
@@ -314,21 +341,11 @@ int main( int argc, char** argv )
 
             try
             {
-               std::vector< mempool::transaction_id_type > ids;
-               const auto& block = block_accept.block();
-
-               for ( int i = 0; i < block.transactions_size(); ++i )
-                  ids.emplace_back( block.transactions( i ).id() );
-
-               const auto [ removed, remaining ] = mempool->remove_pending_transactions( ids );
-
-               if ( block_accept.live() && ( removed || remaining ) )
-                  LOG(info) << "Removed " << removed << " included transaction(s) with " << remaining << " pending transaction(s) remaining"
-                     << " via block - Height: " << block.header().height() << ", ID: " << util::to_hex( block.id() );
+               mempool->handle_block( block_accept );
             }
             catch ( const std::exception& e )
             {
-               LOG(warning) << "Could not remove pending transaction: " << e.what();
+               LOG(warning) << "Could not process block accepted: " << e.what();
             }
          }
       );

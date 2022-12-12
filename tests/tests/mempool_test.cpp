@@ -123,7 +123,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
    chain::value_type nonce_value;
    uint64_t rc_used = 0;
 
-   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST + 1; i++ )
+   for( uint64_t i = 0; i < mempool::constants::max_pending_transaction_request + 1; i++ )
    {
       protocol::transaction trx;
       nonce_value.set_uint64_value( i + 1 );
@@ -139,10 +139,10 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
       BOOST_CHECK_EQUAL( rc, rc_used );
    }
 
-   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );
+   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( mempool::constants::max_pending_transaction_request + 1 ), mempool::pending_transaction_request_overflow );
 
-   auto pending_trxs = mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST );
-   BOOST_REQUIRE( pending_trxs.size() == MAX_PENDING_TRANSACTION_REQUEST );
+   auto pending_trxs = mempool.get_pending_transactions( mempool::constants::max_pending_transaction_request );
+   BOOST_REQUIRE( pending_trxs.size() == mempool::constants::max_pending_transaction_request );
    for( uint64_t i = 0; i < pending_trxs.size(); i++ )
    {
       BOOST_CHECK_EQUAL( pending_trxs[i].transaction().header().rc_limit(), 10 * i );

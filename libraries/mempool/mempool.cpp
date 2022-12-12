@@ -28,12 +28,13 @@ private:
    state_db::database _db;
    state_db::state_node_ptr _state_node;
 
+   void cleanup_account_resources( state_db::anonymous_state_node_ptr node, const pending_transaction_record& pending_trx );
 public:
    mempool_impl();
    virtual ~mempool_impl();
 
    bool has_pending_transaction( const transaction_id_type& id ) const;
-   std::vector< rpc::mempool::pending_transaction > get_pending_transactions( std::size_t limit );
+   std::vector< rpc::mempool::pending_transaction > get_pending_transactions( uint64_t limit );
    bool check_pending_account_resources(
       const account_type& payer,
       uint64_t max_payer_resources,
@@ -45,16 +46,11 @@ public:
       uint64_t disk_storaged_used,
       uint64_t network_bandwidth_used,
       uint64_t compute_bandwidth_used );
-   std::pair< uint64_t, uint64_t > remove_pending_transactions( const std::vector< transaction_id_type >& ids );
+   uint64_t remove_pending_transactions( const std::vector< transaction_id_type >& ids );
    uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
-   void cleanup_account_resources( state_db::anonymous_state_node_ptr node, const pending_transaction_record& pending_trx );
 
-private:
-   bool check_pending_account_resources_lockfree(
-         const account_type& payer,
-         uint64_t max_payer_rc,
-         uint64_t rc_limit
-      )const;
+   void handle_block( const koinos::broadcast::block_accepted& bam );
+   void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
 
 mempool_impl::mempool_impl()
@@ -81,19 +77,61 @@ mempool_impl::mempool_impl()
    { _db.open( {}, []( state_db::state_node_ptr ){}, comp, _db.get_unique_lock() ); }
 
    auto lock =_db.get_shared_lock();
-   _state_node = _db.create_writable_node( _db.get_head( lock )->id(), crypto::hash( crypto::multicodec::sha2_256, std::string{"x"} ), protocol::block_header(), lock );
+   _state_node = _db.create_writable_node( _db.get_head( lock )->id(), crypto::multihash::empty( crypto::multicodec::sha2_256 ), protocol::block_header(), lock );
 }
 
 mempool_impl::~mempool_impl() = default;
+
+void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
+{
+   auto block_id = util::converter::to< crypto::multihash >( bam.block().id() );
+   auto previous_id = util::converter::to< crypto::multihash >( bam.block().header().previous() );
+   auto db_lock = _db.get_shared_lock();
+
+   LOG(debug) << "Handling block - Height: " << bam.block().header().height() <<  ", ID: " << block_id;
+
+   state_db::state_node_ptr state_node;
+
+   // We are handling the genesis case
+   if ( _db.get_root( db_lock )->id() != _db.get_head( db_lock )->id() )
+      state_node = _db.create_writable_node( previous_id, block_id, bam.block().header(), db_lock );
+   else
+      state_node = _db.create_writable_node( crypto::multihash::zero( crypto::multicodec::sha2_256 ), block_id, bam.block().header(), db_lock );
+
+   assert( state_node );
+
+   std::vector< transaction_id_type > ids;
+
+   for ( int i = 0; i < bam.block().transactions_size(); ++i )
+      ids.emplace_back( bam.block().transactions( i ).id() );
+
+   const auto removed_count = remove_pending_transactions( ids );
+
+   if ( bam.live() && removed_count )
+      LOG(info) << "Removed " << removed_count << " included transaction(s) via block - Height: "
+         << bam.block().header().height() << ", ID: " << util::to_hex( bam.block().id() );
+}
+
+void mempool_impl::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )
+{
+   auto block_id = util::converter::to< crypto::multihash >( bi.topology().id() );
+   auto db_lock = _db.get_unique_lock();
+   if ( auto lib = _db.get_node( block_id, db_lock ); lib )
+      _db.commit_node( block_id, db_lock );
+}
 
 bool mempool_impl::has_pending_transaction( const transaction_id_type& id ) const
 {
    return _state_node->get_object( space::transaction_index(), id ) != nullptr;
 }
 
-std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_transactions( std::size_t limit )
+std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_transactions( uint64_t limit )
 {
-   KOINOS_ASSERT( limit <= MAX_PENDING_TRANSACTION_REQUEST, pending_transaction_request_overflow, "requested too many pending transactions. max: ${max}", ("max", MAX_PENDING_TRANSACTION_REQUEST) );
+   KOINOS_ASSERT(
+      limit <= constants::max_pending_transaction_request,
+      pending_transaction_request_overflow,
+      "requested too many pending transactions. max: ${max}", ("max", constants::max_pending_transaction_request)
+   );
 
    std::vector< rpc::mempool::pending_transaction > pending_transactions;
    pending_transactions.reserve( limit );
@@ -124,7 +162,7 @@ std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_trans
    return pending_transactions;
 }
 
-bool mempool_impl::check_pending_account_resources_lockfree(
+bool mempool_impl::check_pending_account_resources(
    const account_type& payer,
    uint64_t max_payer_resources,
    uint64_t trx_resource_limit ) const
@@ -141,14 +179,6 @@ bool mempool_impl::check_pending_account_resources_lockfree(
    return new_resources >= 0;
 }
 
-bool mempool_impl::check_pending_account_resources(
-   const account_type& payer,
-   uint64_t max_payer_rc,
-   uint64_t rc_limit ) const
-{
-   return check_pending_account_resources_lockfree( payer, max_payer_rc, rc_limit );
-}
-
 uint64_t mempool_impl::add_pending_transaction(
    const protocol::transaction& transaction,
    std::chrono::system_clock::time_point time,
@@ -160,7 +190,7 @@ uint64_t mempool_impl::add_pending_transaction(
    uint64_t rc_used = 0;
 
    KOINOS_ASSERT(
-      check_pending_account_resources_lockfree( transaction.header().payer(), max_payer_rc, transaction.header().rc_limit() ),
+      check_pending_account_resources( transaction.header().payer(), max_payer_rc, transaction.header().rc_limit() ),
       pending_transaction_exceeds_resources,
       "transaction would exceed maximum resources for account: ${a}", ("a", util::encode_base58( util::converter::as< std::vector< std::byte > >( transaction.header().payer() )) )
    );
@@ -232,7 +262,7 @@ uint64_t mempool_impl::add_pending_transaction(
    return rc_used;
 }
 
-std::pair< uint64_t, uint64_t > mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
+uint64_t mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
    uint64_t count = 0;
 
@@ -245,8 +275,7 @@ std::pair< uint64_t, uint64_t > mempool_impl::remove_pending_transactions( const
          continue;
 
       auto ptx_obj = node->get_object( space::pending_transaction(), *seq_obj );
-      if ( !ptx_obj )
-         continue;
+      assert( ptx_obj );
 
       auto pending_tx = util::converter::to< pending_transaction_record >( *ptx_obj );
 
@@ -259,7 +288,7 @@ std::pair< uint64_t, uint64_t > mempool_impl::remove_pending_transactions( const
 
    node->commit();
 
-   return std::make_pair( count, 0 );
+   return count;
 }
 
 uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
@@ -323,7 +352,7 @@ bool mempool::has_pending_transaction( const transaction_id_type& id ) const
    return _my->has_pending_transaction( id );
 }
 
-std::vector< rpc::mempool::pending_transaction > mempool::get_pending_transactions( std::size_t limit )
+std::vector< rpc::mempool::pending_transaction > mempool::get_pending_transactions( uint64_t limit )
 {
    return _my->get_pending_transactions( limit );
 }
@@ -347,7 +376,7 @@ uint64_t mempool::add_pending_transaction(
    return _my->add_pending_transaction( transaction, time, max_payer_rc, disk_storaged_used, network_bandwidth_used, compute_bandwidth_used );
 }
 
-std::pair< uint64_t, uint64_t > mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
+uint64_t mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
    return _my->remove_pending_transactions( ids );
 }
@@ -355,6 +384,16 @@ std::pair< uint64_t, uint64_t > mempool::remove_pending_transactions( const std:
 uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
    return _my->prune( expiration, now );
+}
+
+void mempool::handle_block( const koinos::broadcast::block_accepted& bam )
+{
+   _my->handle_block( bam );
+}
+
+void mempool::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )
+{
+   _my->handle_irreversibility( bi );
 }
 
 } // koinos::mempool
