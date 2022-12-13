@@ -141,13 +141,12 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
 
    LOG(debug) << "Handling block - Height: " << bam.block().header().height() <<  ", ID: " << block_id;
 
-   crypto::multihash node_id;
-
    try
    {
       auto root_id = _db.get_root( lock )->id();
 
       // We are handling the genesis case
+      crypto::multihash node_id;
       if ( root_id != _db.get_head( lock )->id() )
          node_id = tmp_id( previous_id );
       else
@@ -160,15 +159,14 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
          "encountered an unlinkable block - Height: ${h}, ID: ${i}", ("h", bam.block().header().height())("i", util::to_hex( bam.block().id() ))
       );
 
+      node = _db.clone_node( node_id, block_id, bam.block().header(), lock );
+
       std::vector< transaction_id_type > ids;
 
       for ( int i = 0; i < bam.block().transactions_size(); ++i )
          ids.emplace_back( bam.block().transactions( i ).id() );
 
       const auto removed_count = remove_pending_transactions( node, ids );
-
-      _db.update_node( node_id, block_id, bam.block().header(), lock );
-      node_id = block_id;
 
       if ( bam.live() && removed_count )
          LOG(info) << "Removed " << removed_count << " included transaction(s) via block - Height: "
@@ -180,8 +178,8 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
       throw;
    }
 
-   _db.finalize_node( node_id, lock );
-   [[maybe_unused]] auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
+   _db.finalize_node( block_id, lock );
+   [[maybe_unused]] auto node = _db.create_writable_node( block_id, tmp_id( block_id ), protocol::block_header(), lock );
    assert( node );
 }
 
@@ -255,6 +253,7 @@ bool mempool_impl::check_pending_account_resources(
    state_db::state_node_ptr node;
 
    node = relevant_node( block_id, lock );
+   assert( node );
 
    return check_pending_account_resources( node, payer, max_payer_resources, trx_resource_limit );
 }
@@ -312,8 +311,9 @@ uint64_t mempool_impl::add_pending_transaction_to_fork(
    metadata.set_seq_num( metadata.seq_num() + 1 );
 
    // Update metadata
-   if ( auto obj = util::converter::as< std::string >( metadata ); !obj.empty() )
-      node->put_object( space::mempool_metadata(), std::string{}, &obj );
+   auto obj = util::converter::as< std::string >( metadata );
+   assert( !obj.empty() );
+   node->put_object( space::mempool_metadata(), std::string{}, &obj );
 
    pending_transaction_record pending_tx;
    *pending_tx.mutable_transaction() = transaction;

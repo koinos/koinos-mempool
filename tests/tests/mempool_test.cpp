@@ -7,6 +7,7 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/util/conversion.hpp>
+#include <koinos/util/hex.hpp>
 
 #include <chrono>
 #include <memory>
@@ -320,9 +321,9 @@ BOOST_AUTO_TEST_CASE( fork_test )
    broadcast::block_accepted bam;
 
    auto payer1 = _key1.get_public_key().to_address_bytes();
-   auto payer2 = _key1.get_public_key().to_address_bytes();
-   auto payer3 = _key1.get_public_key().to_address_bytes();
-   auto payer4 = _key1.get_public_key().to_address_bytes();
+   auto payer2 = _key2.get_public_key().to_address_bytes();
+   auto payer3 = _key3.get_public_key().to_address_bytes();
+   auto payer4 = _key4.get_public_key().to_address_bytes();
    uint64_t max_payer_rc = 1000000000000ull;
    chain::value_type nonce_value;
    nonce_value.set_uint64_value( 1 );
@@ -331,25 +332,25 @@ BOOST_AUTO_TEST_CASE( fork_test )
    t1.mutable_header()->set_rc_limit( 10 );
    t1.mutable_header()->set_payer( payer1 );
    t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t1.set_id( sign( _key1, t1 ) );
+   t1.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t1.header() ) ) );
 
    protocol::transaction t2;
    t2.mutable_header()->set_rc_limit( 10 );
    t2.mutable_header()->set_payer( payer2 );
    t2.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t2.set_id( sign( _key2, t2 ) );
+   t2.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t2.header() ) ) );
 
    protocol::transaction t3;
    t3.mutable_header()->set_rc_limit( 10 );
    t3.mutable_header()->set_payer( payer3 );
    t3.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t3.set_id( sign( _key3, t3 ) );
+   t3.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t3.header() ) ) );
 
    protocol::transaction t4;
    t4.mutable_header()->set_rc_limit( 10 );
    t4.mutable_header()->set_payer( payer4 );
    t4.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t4.set_id( sign( _key4, t4 ) );
+   t4.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t4.header() ) ) );
 
    protocol::block b1;
    b1.mutable_header()->set_height( 1 );
@@ -416,7 +417,7 @@ BOOST_AUTO_TEST_CASE( fork_test )
    BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[1].transaction().id() );
 
    mempool.add_pending_transaction( t4, now + 3s, max_payer_rc, 1, 1, 1 );
-   BOOST_REQUIRE_EQUAL( 2, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( 3, mempool.get_pending_transactions().size() );
    BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
    BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[1].transaction().id() );
    BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[2].transaction().id() );
@@ -424,12 +425,20 @@ BOOST_AUTO_TEST_CASE( fork_test )
    *bam.mutable_block() = b3;
    mempool.handle_block( bam );
 
+#define PENDING_TRANSACTIONS_ONLY_FORK_HEADS 1
+
+#ifdef PENDING_TRANSACTIONS_ONLY_FORK_HEADS
+   BOOST_REQUIRE_EQUAL( 3, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[2].transaction().id() );
+#elif
    BOOST_REQUIRE_EQUAL( 4, mempool.get_pending_transactions().size() );
    BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
    BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
    BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[2].transaction().id() );
    BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[3].transaction().id() );
-
+#endif
 }
 
 BOOST_AUTO_TEST_SUITE_END()
