@@ -29,14 +29,13 @@ private:
 
    crypto::multihash tmp_id( crypto::multihash id ) const;
    state_db::state_node_ptr relevant_node( std::optional< crypto::multihash > id, state_db::shared_lock_ptr lock ) const;
-   state_db::state_node_ptr relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const;
 
    void cleanup_account_resources( state_db::state_node_ptr node, const pending_transaction_record& pending_trx );
 
    uint64_t remove_pending_transactions( state_db::state_node_ptr node, const std::vector< transaction_id_type >& ids );
 
    bool check_pending_account_resources(
-      state_db::anonymous_state_node_ptr node,
+      state_db::abstract_state_node_ptr node,
       const account_type& payer,
       uint64_t max_payer_resources,
       uint64_t trx_resource_limit ) const;
@@ -134,26 +133,6 @@ state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::mul
    return node;
 }
 
-state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const
-{
-   state_db::state_node_ptr node;
-
-   if ( id )
-   {
-      auto block_node = _db.get_node( *id, lock );
-      node = _db.get_node( tmp_id( block_node->id() ), lock );
-      assert( node );
-   }
-   else
-   {
-      auto block_node = _db.get_head( lock );
-      node = _db.get_node( tmp_id( block_node->id() ), lock );
-      assert( node );
-   }
-
-   return node;
-}
-
 void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
 {
    auto block_id = util::converter::to< crypto::multihash >( bam.block().id() );
@@ -184,9 +163,8 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
 
       const auto removed_count = remove_pending_transactions( node, ids );
 
-      auto new_id = util::converter::to< crypto::multihash >( bam.block().id() );
-      _db.update_node( node_id, new_id, bam.block().header(), lock );
-      node_id = new_id;
+      _db.update_node( node_id, block_id, bam.block().header(), lock );
+      node_id = block_id;
 
       if ( bam.live() && removed_count )
          LOG(info) << "Removed " << removed_count << " included transaction(s) via block - Height: "
@@ -195,6 +173,7 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
    catch ( ... )
    {
       _db.discard_node( node_id, lock );
+      LOG(error) << "A fatal error has occurred while processing block broadcast";
       assert( false );
       throw;
    }
@@ -275,11 +254,11 @@ bool mempool_impl::check_pending_account_resources(
 
    node = relevant_node( block_id, lock );
 
-   return check_pending_account_resources( node->create_anonymous_node(), payer, max_payer_resources, trx_resource_limit );
+   return check_pending_account_resources( node, payer, max_payer_resources, trx_resource_limit );
 }
 
 bool mempool_impl::check_pending_account_resources(
-   state_db::anonymous_state_node_ptr node,
+   state_db::abstract_state_node_ptr node,
    const account_type& payer,
    uint64_t max_payer_resources,
    uint64_t trx_resource_limit ) const

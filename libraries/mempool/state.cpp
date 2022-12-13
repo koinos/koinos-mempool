@@ -33,10 +33,10 @@ namespace mempool::space {
 
 namespace detail {
 
-constexpr uint32_t mempool_metadata_id = 1;
+constexpr uint32_t mempool_metadata_id    = 1;
 constexpr uint32_t pending_transaction_id = 2;
-constexpr uint32_t transaction_index_id = 3;
-constexpr uint32_t address_resources_id = 3;
+constexpr uint32_t transaction_index_id   = 3;
+constexpr uint32_t address_resources_id   = 4;
 
 const chain::object_space make_mempool_metadata()
 {
