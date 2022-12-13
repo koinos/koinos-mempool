@@ -425,20 +425,11 @@ BOOST_AUTO_TEST_CASE( fork_test )
    *bam.mutable_block() = b3;
    mempool.handle_block( bam );
 
-#define PENDING_TRANSACTIONS_ONLY_FORK_HEADS 1
-
-#ifdef PENDING_TRANSACTIONS_ONLY_FORK_HEADS
-   BOOST_REQUIRE_EQUAL( 3, mempool.get_pending_transactions().size() );
-   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
-   BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
-   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[2].transaction().id() );
-#elif
    BOOST_REQUIRE_EQUAL( 4, mempool.get_pending_transactions().size() );
    BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
    BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
    BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[2].transaction().id() );
    BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[3].transaction().id() );
-#endif
 }
 
 BOOST_AUTO_TEST_SUITE_END()

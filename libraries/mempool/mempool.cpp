@@ -368,17 +368,19 @@ uint64_t mempool_impl::add_pending_transaction(
    uint64_t rc_used = 0;
 
    auto lock = _db.get_unique_lock();
-   auto nodes = _db.get_fork_heads( lock );
+   auto nodes = _db.get_all_nodes( lock );
 
    try
    {
       std::vector< state_db::anonymous_state_node_ptr > anonymous_state_nodes;
+      auto tmp_head = relevant_node( _db.get_head( lock )->id(), lock );
 
-      for ( auto block_node : nodes )
+      for ( auto state_node : nodes )
       {
-         auto pending_node = relevant_node( block_node->id(), lock );
-         assert( pending_node );
-         auto node = pending_node->create_anonymous_node();
+         if ( state_node->is_finalized() )
+            continue;
+
+         auto node = state_node->create_anonymous_node();
          anonymous_state_nodes.push_back( node );
 
          auto rc = add_pending_transaction_to_node(
@@ -392,7 +394,7 @@ uint64_t mempool_impl::add_pending_transaction(
          );
 
          // We're only returning the RC used as it pertains to head
-         if ( block_node->id() == _db.get_head( lock )->id() )
+         if ( state_node->id() == tmp_head->id() )
             rc_used = rc;
       }
 
