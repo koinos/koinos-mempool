@@ -317,7 +317,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
 BOOST_AUTO_TEST_CASE( fork_test )
 {
-   mempool::mempool mempool( mempool::fork_resolution_algorithm::block_time );
+   mempool::mempool mempool( state_db::fork_resolution_algorithm::block_time );
    broadcast::block_accepted bam;
 
    auto payer1 = _key1.get_public_key().to_address_bytes();

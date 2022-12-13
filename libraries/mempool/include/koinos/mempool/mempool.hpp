@@ -7,6 +7,7 @@
 
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/exception.hpp>
+#include <koinos/state_db/state_db.hpp>
 
 #include <koinos/broadcast/broadcast.pb.h>
 #include <koinos/protocol/protocol.pb.h>
@@ -26,13 +27,6 @@ KOINOS_DECLARE_EXCEPTION( pending_transaction_exceeds_resources );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_request_overflow );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_unlinkable_block );
 
-enum class fork_resolution_algorithm
-{
-   fifo,
-   block_time,
-   pob
-};
-
 namespace detail { class mempool_impl; }
 
 class mempool final
@@ -41,7 +35,7 @@ private:
    std::unique_ptr< detail::mempool_impl > _my;
 
 public:
-   mempool( fork_resolution_algorithm algo = fork_resolution_algorithm::fifo );
+   mempool( state_db::fork_resolution_algorithm algo = state_db::fork_resolution_algorithm::fifo );
    virtual ~mempool();
 
    bool check_pending_account_resources(

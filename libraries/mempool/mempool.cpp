@@ -10,7 +10,6 @@
 #include <koinos/chain/value.pb.h>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/mempool/mempool.pb.h>
-#include <koinos/state_db/state_db.hpp>
 
 #include <koinos/util/base58.hpp>
 #include <koinos/util/conversion.hpp>
@@ -51,7 +50,7 @@ private:
       uint64_t compute_bandwidth_used );
 
 public:
-   mempool_impl( fork_resolution_algorithm algo );
+   mempool_impl( state_db::fork_resolution_algorithm algo );
    virtual ~mempool_impl();
 
    bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const;
@@ -80,26 +79,10 @@ public:
    void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
 
-mempool_impl::mempool_impl( fork_resolution_algorithm algo )
+mempool_impl::mempool_impl( state_db::fork_resolution_algorithm algo )
 {
-   state_db::state_node_comparator_function comp;
-
-   switch ( algo )
-   {
-      case fork_resolution_algorithm::block_time:
-         comp = &state_db::block_time_comparator;
-         break;
-      case fork_resolution_algorithm::pob:
-         comp = &state_db::pob_comparator;
-         break;
-      case fork_resolution_algorithm::fifo:
-         [[fallthrough]];
-      default:
-         comp = &state_db::fifo_comparator;
-   }
-
    auto lock = _db.get_unique_lock();
-   _db.open( {}, []( state_db::state_node_ptr ){}, comp, lock );
+   _db.open( {}, []( state_db::state_node_ptr ){}, algo, lock );
    auto node_id = _db.get_head( lock )->id();
    [[maybe_unused]] auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
    assert( node );
@@ -537,7 +520,7 @@ void mempool_impl::cleanup_account_resources_on_node( state_db::state_node_ptr n
 
 } // detail
 
-mempool::mempool( fork_resolution_algorithm algo ) : _my( std::make_unique< detail::mempool_impl >( algo ) ) {}
+mempool::mempool( state_db::fork_resolution_algorithm algo ) : _my( std::make_unique< detail::mempool_impl >( algo ) ) {}
 mempool::~mempool() = default;
 
 bool mempool::has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const
