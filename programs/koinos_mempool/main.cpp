@@ -264,7 +264,10 @@ int main( int argc, char** argv )
                      case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactions:
                      {
                         const auto& p = args.get_pending_transactions();
-                        auto transactions = mempool->get_pending_transactions( p.limit() );
+                        auto transactions = mempool->get_pending_transactions(
+                           p.limit(),
+                           p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() ) : std::optional< crypto::multihash >{}
+                        );
                         auto pending_trxs = resp.mutable_get_pending_transactions();
                         for( const auto& trx : transactions )
                         {
