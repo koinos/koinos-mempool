@@ -58,6 +58,7 @@ int main( int argc, char** argv )
    std::atomic< bool > stopped = false;
    int retcode = EXIT_SUCCESS;
    std::vector< std::thread > threads;
+   std::atomic< uint64_t > recently_added_count = 0;
 
    boost::asio::io_context main_ioc, server_ioc, client_ioc;
    auto request_handler = koinos::mq::request_handler( server_ioc );
@@ -66,20 +67,25 @@ int main( int argc, char** argv )
 
    timer_func_type timer_func = [&]( const boost::system::error_code& ec, std::shared_ptr< koinos::mempool::mempool > mpool, std::chrono::seconds exp_time )
    {
-      static uint64_t num_pruned = 0;
+      static uint64_t pruned_count = 0;
       static auto last_message = std::chrono::system_clock::now();
 
       if ( ec == boost::asio::error::operation_aborted )
          return;
 
-      num_pruned += mpool->prune( exp_time );
+      pruned_count += mpool->prune( exp_time );
 
       auto now = std::chrono::system_clock::now();
-      if ( now - last_message >= 1min && num_pruned )
+      if ( now - last_message >= 1min )
       {
-         LOG(info) << "Pruned " << num_pruned << " transaction(s) from mempool";
+         LOG(info) << "Recently added " << recently_added_count << " transaction(s)";
+
+         if ( pruned_count )
+            LOG(info) << "Pruned " << pruned_count << " transaction(s) from mempool";
+
+         recently_added_count = 0;
+         pruned_count = 0;
          last_message = now;
-         num_pruned = 0;
       }
 
       timer.expires_after( 1s );
@@ -332,6 +338,8 @@ int main( int argc, char** argv )
                accepted_broadcast.set_pending_rc_used( rc_used );
 
                client.broadcast( "koinos.mempool.accept", util::converter::as< std::string >( accepted_broadcast ) );
+
+               recently_added_count++;
             }
             catch ( const std::exception& e )
             {
