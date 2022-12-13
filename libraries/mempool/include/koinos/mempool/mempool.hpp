@@ -24,6 +24,7 @@ using block_height_type = uint64_t;
 KOINOS_DECLARE_EXCEPTION( pending_transaction_insertion_failure );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_exceeds_resources );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_request_overflow );
+KOINOS_DECLARE_EXCEPTION( pending_transaction_unlinkable_block );
 
 enum class fork_resolution_algorithm
 {

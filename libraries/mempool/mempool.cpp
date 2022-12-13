@@ -154,7 +154,11 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
          node_id = tmp_id( root_id );
 
       auto node = _db.get_node( node_id, lock );
-      assert( node );
+      KOINOS_ASSERT(
+         node,
+         pending_transaction_unlinkable_block,
+         "encountered an unlinkable block - Height: ${h}, ID: ${i}", ("h", bam.block().header().height())("i", util::to_hex( bam.block().id() ))
+      );
 
       std::vector< transaction_id_type > ids;
 
@@ -172,8 +176,6 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
    }
    catch ( ... )
    {
-      _db.discard_node( node_id, lock );
-      LOG(error) << "A fatal error has occurred while processing block broadcast";
       assert( false );
       throw;
    }
