@@ -101,15 +101,13 @@ state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::mul
 
    if ( id )
    {
-      auto block_node = _db.get_node( *id, lock );
-      node = _db.get_node( tmp_id( block_node->id() ), lock );
-      assert( node );
+      if ( node = _db.get_node( *id, lock ); node )
+         node = _db.get_node( tmp_id( node->id() ), lock );
    }
    else
    {
-      auto block_node = _db.get_head( lock );
-      node = _db.get_node( tmp_id( block_node->id() ), lock );
-      assert( node );
+      if ( node = _db.get_head( lock ); node )
+         node = _db.get_node( tmp_id( node->id() ), lock );
    }
 
    return node;
@@ -121,15 +119,13 @@ state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::mul
 
    if ( id )
    {
-      auto block_node = _db.get_node( *id, lock );
-      node = _db.get_node( tmp_id( block_node->id() ), lock );
-      assert( node );
+      if ( node = _db.get_node( *id, lock ); node )
+         node = _db.get_node( tmp_id( node->id() ), lock );
    }
    else
    {
-      auto block_node = _db.get_head( lock );
-      node = _db.get_node( tmp_id( block_node->id() ), lock );
-      assert( node );
+      if ( node = _db.get_head( lock ); node )
+         node = _db.get_node( tmp_id( node->id() ), lock );
    }
 
    return node;
@@ -217,6 +213,12 @@ std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_trans
 
    auto node = relevant_node( block_id, lock );
 
+   KOINOS_ASSERT(
+      node,
+      pending_transaction_unknown_block,
+      "cannot retrieve pending transactions from an unknown block"
+   );
+
    std::vector< rpc::mempool::pending_transaction > pending_transactions;
    pending_transactions.reserve( limit );
 
@@ -254,7 +256,12 @@ bool mempool_impl::check_pending_account_resources(
 {
    auto lock = _db.get_shared_lock();
    auto node = relevant_node( block_id, lock );
-   assert( node );
+
+   KOINOS_ASSERT(
+      node,
+      pending_transaction_unknown_block,
+      "cannot check pending account resources from an unknown block"
+   );
 
    return check_pending_account_resources_on_node( node, payer, max_payer_resources, trx_resource_limit );
 }
