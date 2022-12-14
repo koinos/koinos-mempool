@@ -255,7 +255,8 @@ int main( int argc, char** argv )
                            mempool->check_pending_account_resources(
                               p.payer(),
                               p.max_payer_rc(),
-                              p.rc_limit()
+                              p.rc_limit(),
+                              p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() ) : std::optional< crypto::multihash >{}
                            )
                         );
 
