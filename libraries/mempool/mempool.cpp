@@ -204,9 +204,9 @@ bool mempool_impl::has_pending_transaction( const transaction_id_type& id, std::
 std::vector< rpc::mempool::pending_transaction > mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
    KOINOS_ASSERT(
-      limit <= constants::max_pending_transaction_request,
+      limit <= constants::max_request_limit,
       pending_transaction_request_overflow,
-      "requested too many pending transactions. max: ${max}", ("max", constants::max_pending_transaction_request)
+      "requested too many pending transactions. max: ${max}", ("max", constants::max_request_limit)
    );
 
    auto lock = _db.get_shared_lock();

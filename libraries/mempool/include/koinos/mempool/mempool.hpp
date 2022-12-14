@@ -15,7 +15,7 @@
 
 namespace koinos::mempool {
 
-namespace constants { constexpr uint64_t max_pending_transaction_request = 2000; }
+namespace constants { constexpr uint64_t max_request_limit = 2000; }
 
 using transaction_id_type = std::string;
 using account_type = std::string;
@@ -58,7 +58,7 @@ public:
       std::optional< crypto::multihash > block_id = {} ) const;
 
    std::vector< rpc::mempool::pending_transaction > get_pending_transactions(
-      uint64_t limit = constants::max_pending_transaction_request,
+      uint64_t limit = constants::max_request_limit,
       std::optional< crypto::multihash > block_id = {} );
 
    uint64_t remove_pending_transactions( const std::vector< transaction_id_type >& ids );

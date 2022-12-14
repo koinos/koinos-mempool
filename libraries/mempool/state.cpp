@@ -1,35 +1,6 @@
 #include <koinos/mempool/state.hpp>
 
-namespace koinos {
-
-namespace chain {
-
-bool operator<( const object_space& lhs, const object_space& rhs )
-{
-   if ( lhs.system() < rhs.system() )
-   {
-      return true;
-   }
-   else if ( lhs.system() > rhs.system() )
-   {
-      return false;
-   }
-
-   if ( lhs.zone() < rhs.zone() )
-   {
-      return true;
-   }
-   else if ( lhs.system() > rhs.system() )
-   {
-      return false;
-   }
-
-   return lhs.id() < rhs.id();
-}
-
-} // chain
-
-namespace mempool::space {
+namespace koinos::mempool::space {
 
 namespace detail {
 
@@ -68,31 +39,28 @@ const chain::object_space make_address_resources()
 
 } // detail
 
-const chain::object_space mempool_metadata()
+const chain::object_space& mempool_metadata()
 {
    static auto s = detail::make_mempool_metadata();
    return s;
 }
 
-const chain::object_space pending_transaction()
+const chain::object_space& pending_transaction()
 {
    static auto s = detail::make_pending_transaction();
    return s;
 }
 
-const chain::object_space transaction_index()
+const chain::object_space& transaction_index()
 {
    static auto s = detail::make_transaction_index();
    return s;
 }
 
-const chain::object_space address_resources()
+const chain::object_space& address_resources()
 {
    static auto s = detail::make_address_resources();
    return s;
 }
 
-} // mempool::space
-
-} // koinos
-
+} // koinos::mempool::space
