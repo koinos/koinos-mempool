@@ -427,8 +427,10 @@ uint64_t mempool_impl::add_pending_transaction(
 uint64_t mempool_impl::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
    uint64_t count = 0;
-   auto lock = _db.get_unique_lock();
+
+   auto lock  = _db.get_unique_lock();
    auto nodes = _db.get_fork_heads( lock );
+   auto head  = _db.get_head( lock );
 
    for ( auto block_node : nodes )
    {
@@ -437,7 +439,7 @@ uint64_t mempool_impl::remove_pending_transactions( const std::vector< transacti
       auto num_removed = remove_pending_transactions_on_node( node, ids );
 
       // We're only returning the number of transactions removed as it pertains to head
-      if ( block_node->id() == _db.get_head( lock )->id() )
+      if ( block_node->id() == head->id() )
          count = num_removed;
    }
 
@@ -472,14 +474,14 @@ uint64_t mempool_impl::remove_pending_transactions_on_node( state_db::state_node
 uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
    uint64_t count = 0;
-   auto lock = _db.get_unique_lock();
+
+   auto lock  = _db.get_unique_lock();
    auto nodes = _db.get_fork_heads( lock );
+   auto head  = _db.get_head( lock );
 
    for ( auto block_node : nodes )
    {
       auto node = relevant_node( block_node->id(), lock );
-
-      bool is_head = block_node->id() == _db.get_head( lock )->id();
 
       for (;;)
       {
@@ -493,15 +495,12 @@ uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::syst
          if ( time + expiration > now )
             break;
 
-         auto tx_idx_obj = node->get_object( space::transaction_index(), pending_tx.transaction().id() );
-         assert( tx_idx_obj );
-
          cleanup_account_resources_on_node( node, pending_tx );
          node->remove_object( space::pending_transaction(), key );
          node->remove_object( space::transaction_index(), pending_tx.transaction().id() );
 
          // Only consider pruned transactions on the fork considered head
-         if ( is_head )
+         if ( block_node->id() == head->id() )
             count++;
       }
    }
