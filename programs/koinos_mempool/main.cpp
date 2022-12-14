@@ -269,7 +269,7 @@ int main( int argc, char** argv )
                            p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() ) : std::optional< crypto::multihash >{}
                         );
                         auto pending_trxs = resp.mutable_get_pending_transactions();
-                        for( const auto& trx : transactions )
+                        for ( const auto& trx : transactions )
                         {
                            pending_trxs->add_pending_transactions()->CopyFrom( trx );
                         }
