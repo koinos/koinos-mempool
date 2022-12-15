@@ -7,7 +7,9 @@
 #include <koinos/crypto/multihash.hpp>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/util/conversion.hpp>
+#include <koinos/util/hex.hpp>
 
+#include <chrono>
 #include <memory>
 
 using namespace koinos;
@@ -25,6 +27,9 @@ struct mempool_fixture
 
       std::string seed3 = "india juliet kilo lima";
       _key3 = crypto::private_key::regenerate( crypto::hash( crypto::multicodec::sha2_256, seed3 ) );
+
+      std::string seed4 = "mike november oscar papa";
+      _key4 = crypto::private_key::regenerate( crypto::hash( crypto::multicodec::sha2_256, seed4 ) );
    }
 
    mempool::transaction_id_type sign( crypto::private_key& key, protocol::transaction& t )
@@ -41,6 +46,7 @@ struct mempool_fixture
    crypto::private_key _key1;
    crypto::private_key _key2;
    crypto::private_key _key3;
+   crypto::private_key _key4;
 };
 
 BOOST_FIXTURE_TEST_SUITE( mempool_tests, mempool_fixture )
@@ -117,15 +123,15 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
 {
    mempool::mempool mempool;
-   protocol::transaction trx;
    mempool::account_type payer = _key1.get_public_key().to_address_bytes();;
    uint64_t max_payer_resources = 1000000000000;
    uint64_t trx_resource_limit;
    chain::value_type nonce_value;
    uint64_t rc_used = 0;
 
-   for( uint64_t i = 0; i < MAX_PENDING_TRANSACTION_REQUEST + 1; i++ )
+   for ( uint64_t i = 0; i < mempool::constants::max_request_limit + 1; i++ )
    {
+      protocol::transaction trx;
       nonce_value.set_uint64_value( i + 1 );
 
       trx.mutable_header()->set_rc_limit( 10 * i );
@@ -139,11 +145,11 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
       BOOST_CHECK_EQUAL( rc, rc_used );
    }
 
-   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST + 1 ), mempool::pending_transaction_request_overflow );
+   BOOST_REQUIRE_THROW( mempool.get_pending_transactions( mempool::constants::max_request_limit + 1 ), mempool::pending_transaction_request_overflow );
 
-   auto pending_trxs = mempool.get_pending_transactions( MAX_PENDING_TRANSACTION_REQUEST );
-   BOOST_REQUIRE( pending_trxs.size() == MAX_PENDING_TRANSACTION_REQUEST );
-   for( uint64_t i = 0; i < pending_trxs.size(); i++ )
+   auto pending_trxs = mempool.get_pending_transactions( mempool::constants::max_request_limit );
+   BOOST_REQUIRE( pending_trxs.size() == mempool::constants::max_request_limit );
+   for ( uint64_t i = 0; i < pending_trxs.size(); i++ )
    {
       BOOST_CHECK_EQUAL( pending_trxs[i].transaction().header().rc_limit(), 10 * i );
    }
@@ -206,7 +212,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
    mempool.add_pending_transaction( trx, now + 1s, max_payer_resources, 1, 1, 1 );
 
    auto pending_trxs = mempool.get_pending_transactions();
-   BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 3 );
    BOOST_REQUIRE_EQUAL( pending_trxs.size(), 4 );
    for ( size_t i = 0; i < pending_trxs.size(); i++ )
    {
@@ -215,7 +220,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
    mempool.prune( 1s, now + 1s );
    pending_trxs = mempool.get_pending_transactions();
-   BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 2 );
    BOOST_REQUIRE_EQUAL( pending_trxs.size(), 2 );
    for ( size_t i = 0; i < pending_trxs.size(); i++ )
    {
@@ -224,7 +228,6 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pruning )
 
    mempool.prune( 1s, now + 2s );
    pending_trxs = mempool.get_pending_transactions();
-   BOOST_CHECK_EQUAL( mempool.payer_entries_size(), 0 );
    BOOST_REQUIRE_EQUAL( pending_trxs.size(), 0 );
 }
 
@@ -312,91 +315,121 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
    );
 }
 
-BOOST_AUTO_TEST_CASE( mempool_nonce_test )
+BOOST_AUTO_TEST_CASE( fork_test )
 {
-   mempool::mempool mempool;
+   mempool::mempool mempool( state_db::fork_resolution_algorithm::block_time );
+   broadcast::block_accepted bam;
 
-   auto payer = _key1.get_public_key().to_address_bytes();
-   uint64_t max_payer_resources = 1000000000000ull;
+   auto payer1 = _key1.get_public_key().to_address_bytes();
+   auto payer2 = _key2.get_public_key().to_address_bytes();
+   auto payer3 = _key3.get_public_key().to_address_bytes();
+   auto payer4 = _key4.get_public_key().to_address_bytes();
+   uint64_t max_payer_rc = 1000000000000ull;
    chain::value_type nonce_value;
+   nonce_value.set_uint64_value( 1 );
+
+   protocol::transaction t1;
+   t1.mutable_header()->set_rc_limit( 10 );
+   t1.mutable_header()->set_payer( payer1 );
+   t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   t1.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t1.header() ) ) );
+
+   protocol::transaction t2;
+   t2.mutable_header()->set_rc_limit( 10 );
+   t2.mutable_header()->set_payer( payer2 );
+   t2.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   t2.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t2.header() ) ) );
+
+   protocol::transaction t3;
+   t3.mutable_header()->set_rc_limit( 10 );
+   t3.mutable_header()->set_payer( payer3 );
+   t3.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   t3.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t3.header() ) ) );
+
+   protocol::transaction t4;
+   t4.mutable_header()->set_rc_limit( 10 );
+   t4.mutable_header()->set_payer( payer4 );
+   t4.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   t4.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, t4.header() ) ) );
+
+   protocol::block b1;
+   b1.mutable_header()->set_height( 1 );
+   b1.mutable_header()->set_timestamp( 1 );
+   b1.mutable_header()->set_signer( payer1 );
+   b1.mutable_header()->set_previous( util::converter::as< std::string >( crypto::multihash::zero( crypto::multicodec::sha2_256 ) ) );
+   b1.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, b1.header() ) ) );
+
+   protocol::block b2;
+   b2.mutable_header()->set_height( 1 );
+   b2.mutable_header()->set_timestamp( 2 );
+   b2.mutable_header()->set_signer( payer2 );
+   b2.mutable_header()->set_previous( util::converter::as< std::string >( crypto::multihash::zero( crypto::multicodec::sha2_256 ) ) );
+   b2.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, b2.header() ) ) );
+
+   protocol::block b3;
+   b3.mutable_header()->set_height( 2 );
+   b3.mutable_header()->set_timestamp( 3 );
+   b3.mutable_header()->set_signer( payer3 );
+   b3.mutable_header()->set_previous( b1.id() );
+   b3.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, b3.header() ) ) );
+
+   protocol::block b4;
+   b4.mutable_header()->set_height( 2 );
+   b4.mutable_header()->set_timestamp( 4 );
+   b4.mutable_header()->set_signer( payer4 );
+   b4.mutable_header()->set_previous( b1.id() );
+   b4.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, b4.header() ) ) );
 
    auto now = std::chrono::system_clock::now();
 
-   BOOST_TEST_MESSAGE( "adding pending transactions" );
+   mempool.add_pending_transaction( t1, now, max_payer_rc, 1, 1, 1 );
+   BOOST_REQUIRE_EQUAL( 1, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
 
-   protocol::transaction t1;
-   nonce_value.set_uint64_value( 2 );
-   t1.mutable_header()->set_rc_limit( 10 );
-   t1.mutable_header()->set_payer( payer );
-   t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t1.set_id( sign( _key1, t1 ) );
-   mempool.add_pending_transaction( t1, now, max_payer_resources, 1, 2, 3 );
+   *b2.add_transactions() = t1;
+   *bam.mutable_block() = b2;
+   mempool.handle_block( bam );
 
-   protocol::transaction t2;
-   payer = _key2.get_public_key().to_address_bytes();
-   nonce_value.set_uint64_value( 2 );
-   t2.mutable_header()->set_rc_limit( 10 );
-   t2.mutable_header()->set_payer( payer );
-   t2.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t2.set_id( sign( _key2, t2 ) );
-   mempool.add_pending_transaction( t2, now + 1s, max_payer_resources, 1, 2, 3 );
+   BOOST_REQUIRE_EQUAL( 0, mempool.get_pending_transactions().size() );
 
-   protocol::transaction t3;
-   nonce_value.set_uint64_value( 3 );
-   payer = _key1.get_public_key().to_address_bytes();
-   t3.mutable_header()->set_rc_limit( 10 );
-   t3.mutable_header()->set_payer( payer );
-   t3.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t3.set_id( sign( _key1, t3 ) );
-   mempool.add_pending_transaction( t3, now + 2s, max_payer_resources, 1, 2, 3 );
+   *bam.mutable_block() = b1;
+   mempool.handle_block( bam );
 
-   protocol::transaction t4;
-   nonce_value.set_uint64_value( 1 );
-   t4.mutable_header()->set_rc_limit( 10 );
-   t4.mutable_header()->set_payer( payer );
-   t4.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t4.set_id( sign( _key1, t4 ) );
-   mempool.add_pending_transaction( t4, now + 3s, max_payer_resources, 1, 2, 3 );
+   BOOST_REQUIRE_EQUAL( 1, mempool.get_pending_transactions().size() );
 
-   protocol::transaction t5;
-   payer = _key2.get_public_key().to_address_bytes();
-   nonce_value.set_uint64_value( 1 );
-   t5.mutable_header()->set_rc_limit( 10 );
-   t5.mutable_header()->set_payer( payer );
-   t5.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
-   t5.set_id( sign( _key2, t5 ) );
-   mempool.add_pending_transaction( t5, now + 4s, max_payer_resources, 1, 2, 3 );
+   mempool.add_pending_transaction( t2, now + 1s, max_payer_rc, 1, 1, 1 );
+   BOOST_REQUIRE_EQUAL( 2, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
 
-   BOOST_TEST_MESSAGE( "checking pending transaction list" );
-   // Order should be t4, t1, t5, t2, t3
-   // key1, key1, key2, key2, key1
-   auto pending_txs = mempool.get_pending_transactions();
-   BOOST_TEST_MESSAGE( "checking pending transactions size" );
-   BOOST_REQUIRE_EQUAL( pending_txs.size(), 5 );
-   BOOST_TEST_MESSAGE( "checking pending transaction ids" );
-   BOOST_REQUIRE( pending_txs[0].transaction().id() == t4.id() );
-   BOOST_REQUIRE( pending_txs[1].transaction().id() == t1.id() );
-   BOOST_REQUIRE( pending_txs[2].transaction().id() == t5.id() );
-   BOOST_REQUIRE( pending_txs[3].transaction().id() == t2.id() );
-   BOOST_REQUIRE( pending_txs[4].transaction().id() == t3.id() );
+   mempool.add_pending_transaction( t3, now + 2s, max_payer_rc, 1, 1, 1 );
+   BOOST_REQUIRE_EQUAL( 3, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[2].transaction().id() );
 
-   mempool.prune( 1s, now + 2s ); // Removes t1 and t2
+   *b4.add_transactions() = t2;
+   *bam.mutable_block() = b4;
+   mempool.handle_block( bam );
 
-   pending_txs = mempool.get_pending_transactions();
-   BOOST_TEST_MESSAGE( "checking pending transactions size" );
-   BOOST_REQUIRE_EQUAL( pending_txs.size(), 3 );
-   BOOST_TEST_MESSAGE( "checking pending transaction ids" );
-   BOOST_REQUIRE( pending_txs[0].transaction().id() == t4.id() );
-   BOOST_REQUIRE( pending_txs[1].transaction().id() == t5.id() );
-   BOOST_REQUIRE( pending_txs[2].transaction().id() == t3.id() );
+   BOOST_REQUIRE_EQUAL( 2, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[1].transaction().id() );
 
-   mempool.prune( 1s, now + 4s ); // Removed t3 and t4
+   mempool.add_pending_transaction( t4, now + 3s, max_payer_rc, 1, 1, 1 );
+   BOOST_REQUIRE_EQUAL( 3, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[1].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[2].transaction().id() );
 
-   pending_txs = mempool.get_pending_transactions();
-   BOOST_TEST_MESSAGE( "checking pending transactions size" );
-   BOOST_REQUIRE_EQUAL( pending_txs.size(), 1 );
-   BOOST_TEST_MESSAGE( "checking pending transaction ids" );
-   BOOST_REQUIRE( pending_txs[0].transaction().id() == t5.id() );
+   *bam.mutable_block() = b3;
+   mempool.handle_block( bam );
+
+   BOOST_REQUIRE_EQUAL( 4, mempool.get_pending_transactions().size() );
+   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[0].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t2.id(), mempool.get_pending_transactions()[1].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[2].transaction().id() );
+   BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[3].transaction().id() );
 }
 
 BOOST_AUTO_TEST_SUITE_END()
