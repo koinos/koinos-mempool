@@ -255,15 +255,32 @@ bool mempool_impl::check_pending_account_resources(
    std::optional< crypto::multihash > block_id ) const
 {
    auto lock = _db.get_shared_lock();
-   auto node = relevant_node( block_id, lock );
 
-   KOINOS_ASSERT(
-      node,
-      pending_transaction_unknown_block,
-      "cannot check pending account resources from an unknown block"
-   );
+   if ( block_id.has_value() )
+   {
+      auto node = relevant_node( block_id, lock );
 
-   return check_pending_account_resources_on_node( node, payer, max_payer_resources, trx_resource_limit );
+      KOINOS_ASSERT(
+         node,
+         pending_transaction_unknown_block,
+         "cannot check pending account resources from an unknown block"
+      );
+
+      return check_pending_account_resources_on_node( node, payer, max_payer_resources, trx_resource_limit );
+   }
+
+   auto nodes = _db.get_all_nodes( lock );
+
+   for ( auto node : nodes )
+   {
+      if ( node->is_finalized() )
+         continue;
+
+      if ( !check_pending_account_resources_on_node( node, payer, max_payer_resources, trx_resource_limit ) )
+         return false;
+   }
+
+   return true;
 }
 
 bool mempool_impl::check_pending_account_resources_on_node(
