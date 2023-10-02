@@ -39,7 +39,9 @@
 #define LOG_DIR_OPTION                 "log-dir"
 #define LOG_DIR_DEFAULT                ""
 #define LOG_COLOR_OPTION               "log-color"
-#define LOG_COLOR_DEFAULT              false
+#define LOG_COLOR_DEFAULT              true
+#define LOG_DATETIME_OPTION            "log-datetime"
+#define LOG_DATETIME_DEFAULT           true
 #define INSTANCE_ID_OPTION             "instance-id"
 #define JOBS_OPTION                    "jobs"
 #define JOBS_DEFAULT                   uint64_t( 2 )
@@ -110,7 +112,8 @@ int main( int argc, char** argv )
          (TRANSACTION_EXPIRATION_OPTION",e", program_options::value< uint64_t >(), "The number of seconds a transaction should expire in")
          (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')")
          (LOG_DIR_OPTION                   , program_options::value< std::string >(), "The logging directory")
-         (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle");
+         (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle")
+         (LOG_DATETIME_OPTION              , program_options::value< bool >(), "Log datetime on console toggle");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -154,6 +157,7 @@ int main( int argc, char** argv )
       auto log_level          = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
       auto log_dir            = util::get_option< std::string >( LOG_DIR_OPTION, LOG_DIR_DEFAULT, args, mempool_config, global_config );
       auto log_color          = util::get_option< bool >( LOG_COLOR_OPTION, LOG_COLOR_DEFAULT, args, mempool_config, global_config );
+      auto log_datetime       = util::get_option< bool >( LOG_DATETIME_OPTION, LOG_DATETIME_DEFAULT, args, mempool_config, global_config );
       auto instance_id        = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
       auto jobs               = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
       auto tx_expiration      = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
@@ -167,7 +171,7 @@ int main( int argc, char** argv )
             logdir_path = basedir / util::service::mempool / *logdir_path;
       }
 
-      koinos::initialize_logging( util::service::mempool, instance_id, log_level, logdir_path, log_color );
+      koinos::initialize_logging( util::service::mempool, instance_id, log_level, logdir_path, log_color, log_datetime );
 
       LOG(info) << version_string();
 
