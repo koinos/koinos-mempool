@@ -36,6 +36,10 @@
 #define AMQP_DEFAULT                   "amqp://guest:guest@localhost:5672/"
 #define LOG_LEVEL_OPTION               "log-level"
 #define LOG_LEVEL_DEFAULT              "info"
+#define LOG_DIR_OPTION                 "log-dir"
+#define LOG_DIR_DEFAULT                ""
+#define LOG_COLOR_OPTION               "log-color"
+#define LOG_COLOR_DEFAULT              false
 #define INSTANCE_ID_OPTION             "instance-id"
 #define JOBS_OPTION                    "jobs"
 #define JOBS_DEFAULT                   uint64_t( 2 )
@@ -104,7 +108,9 @@ int main( int argc, char** argv )
          (INSTANCE_ID_OPTION           ",i", program_options::value< std::string >(), "An ID that uniquely identifies the instance")
          (JOBS_OPTION                  ",j", program_options::value< uint64_t >(), "The number of worker jobs")
          (TRANSACTION_EXPIRATION_OPTION",e", program_options::value< uint64_t >(), "The number of seconds a transaction should expire in")
-         (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')");
+         (FORK_ALGORITHM_OPTION        ",f", program_options::value< std::string >(), "The fork resolution algorithm to use. Can be 'fifo', 'pob', or 'block-time'. (Default: 'fifo')")
+         (LOG_DIR_OPTION                   , program_options::value< std::string >(), "The logging directory")
+         (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle");
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -146,12 +152,22 @@ int main( int argc, char** argv )
 
       auto amqp_url           = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
       auto log_level          = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
+      auto log_dir            = util::get_option< std::string >( LOG_DIR_OPTION, LOG_DIR_DEFAULT, args, mempool_config, global_config );
+      auto log_color          = util::get_option< bool >( LOG_COLOR_OPTION, LOG_COLOR_DEFAULT, args, mempool_config, global_config );
       auto instance_id        = util::get_option< std::string >( INSTANCE_ID_OPTION, util::random_alphanumeric( 5 ), args, mempool_config, global_config );
       auto jobs               = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
       auto tx_expiration      = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
       auto fork_algorithm_opt = util::get_option< std::string >( FORK_ALGORITHM_OPTION, FORK_ALGORITHM_DEFAULT, args, mempool_config, global_config );
 
-      koinos::initialize_logging( util::service::mempool, instance_id, log_level, basedir / util::service::mempool / "logs" );
+      std::optional< std::filesystem::path > logdir_path;
+      if ( !log_dir.empty() )
+      {
+         logdir_path = std::make_optional< std::filesystem::path >( log_dir );
+         if ( logdir_path->is_relative() )
+            logdir_path = basedir / util::service::mempool / *logdir_path;
+      }
+
+      koinos::initialize_logging( util::service::mempool, instance_id, log_level, logdir_path, log_color );
 
       LOG(info) << version_string();
 
