@@ -27,6 +27,7 @@ KOINOS_DECLARE_EXCEPTION( pending_transaction_exceeds_resources );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_request_overflow );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_unlinkable_block );
 KOINOS_DECLARE_EXCEPTION( pending_transaction_unknown_block );
+KOINOS_DECLARE_EXCEPTION( pending_transaction_nonce_conflict );
 
 namespace detail { class mempool_impl; }
 
@@ -43,6 +44,11 @@ public:
       const account_type& payer,
       uint64_t max_payer_resources,
       uint64_t trx_resource_limit,
+      std::optional< crypto::multihash > block_id = {} ) const;
+
+   bool check_account_nonce(
+      const account_type& payer,
+      const std::string& nonce,
       std::optional< crypto::multihash > block_id = {} ) const;
 
    uint64_t add_pending_transaction(

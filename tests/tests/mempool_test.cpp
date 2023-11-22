@@ -432,4 +432,142 @@ BOOST_AUTO_TEST_CASE( fork_test )
    BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[3].transaction().id() );
 }
 
+BOOST_AUTO_TEST_CASE( nonce_basic_test )
+{
+   // This test adds two transactions to the mempool,
+   // one with the payee set and one without,
+   // and then removes them, ensuring add_pending_transaction
+   // and check_account_nonce work correctly
+   mempool::mempool mempool;
+   protocol::transaction trx;
+   mempool::account_type payer;
+   mempool::account_type payee;
+   uint64_t max_payer_resources;
+   uint64_t trx_resource_limit;
+   chain::value_type nonce_value;
+
+   payer = _key1.get_public_key().to_address_bytes();
+   payee = _key2.get_public_key().to_address_bytes();
+   max_payer_resources = 1000000000000;
+   nonce_value.set_uint64_value( 1 );
+   trx.mutable_header()->set_rc_limit( 10 );
+   trx.mutable_header()->set_payer( payer );
+   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   trx.set_id( sign( _key1, trx ) );
+   auto trx1_id = trx.id();
+
+   BOOST_REQUIRE( mempool.check_account_nonce( payer, trx.header().nonce() ) );
+   BOOST_REQUIRE( mempool.check_account_nonce( payee, trx.header().nonce() ) );
+
+   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+   BOOST_REQUIRE( !mempool.check_account_nonce( payer, trx.header().nonce() ) );
+   BOOST_REQUIRE( mempool.check_account_nonce( payee, trx.header().nonce() ) );
+
+   trx.mutable_header()->set_rc_limit( 20 );
+   trx.set_id( sign( _key1, trx ) );
+
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ), mempool::pending_transaction_nonce_conflict );
+
+   trx.mutable_header()->set_rc_limit( 10 );
+   trx.mutable_header()->set_payee( payee );
+   trx.set_id( sign( _key2, trx ) );
+   auto trx2_id = trx.id();
+
+   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+   BOOST_REQUIRE( !mempool.check_account_nonce( payer, trx.header().nonce() ) );
+   BOOST_REQUIRE( !mempool.check_account_nonce( payee, trx.header().nonce() ) );
+
+   trx.mutable_header()->set_rc_limit( 20 );
+   trx.set_id( sign( _key2, trx ) );
+
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ), mempool::pending_transaction_nonce_conflict );
+
+   mempool.remove_pending_transactions( std::vector< mempool::transaction_id_type >{ trx1_id, trx2_id } );
+
+   BOOST_REQUIRE( mempool.check_account_nonce( payer, trx.header().nonce() ) );
+   BOOST_REQUIRE( mempool.check_account_nonce( payee, trx.header().nonce() ) );
+}
+
+BOOST_AUTO_TEST_CASE( nonce_fork_test )
+{
+   // This test tests nonce tracking on different forks
+   //
+   // A transaction (t1) with nonce 1 will be pushed with blocks, A1, and B1
+   // Pushing a second transaction (t2) with the same nonce should fail
+   // A new block, A2 will be pushed, which contains t1 and will remove nonce 1 from A2
+
+   mempool::mempool mempool;
+   protocol::transaction t1, t2;
+   mempool::account_type payer, producer1, producer2, producer3;
+   uint64_t max_payer_resources;
+   uint64_t trx_resource_limit;
+   chain::value_type nonce_value;
+
+   broadcast::block_accepted bam;
+   producer1 = _key1.get_public_key().to_address_bytes();
+   producer2 = _key2.get_public_key().to_address_bytes();
+   producer3 = _key3.get_public_key().to_address_bytes();
+
+   payer = _key1.get_public_key().to_address_bytes();
+   max_payer_resources = 1000000000000;
+   nonce_value.set_uint64_value( 1 );
+   t1.mutable_header()->set_rc_limit( 10 );
+   t1.mutable_header()->set_payer( payer );
+   t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   t1.set_id( sign( _key1, t1 ) );
+
+   protocol::block a1;
+   a1.mutable_header()->set_height( 1 );
+   a1.mutable_header()->set_timestamp( 1 );
+   a1.mutable_header()->set_signer( producer1 );
+   a1.mutable_header()->set_previous( util::converter::as< std::string >( crypto::multihash::zero( crypto::multicodec::sha2_256 ) ) );
+   auto a1_id = crypto::hash( crypto::multicodec::sha2_256, a1.header() );
+   a1.set_id( util::converter::as< std::string >( a1_id ) );
+
+   protocol::block b1;
+   b1.mutable_header()->set_height( 1 );
+   b1.mutable_header()->set_timestamp( 1 );
+   b1.mutable_header()->set_signer( producer2 );
+   b1.mutable_header()->set_previous( util::converter::as< std::string >( crypto::multihash::zero( crypto::multicodec::sha2_256 ) ) );
+   auto b1_id = crypto::hash( crypto::multicodec::sha2_256, b1.header() );
+   b1.set_id( util::converter::as< std::string >( b1_id ) );
+
+   *bam.mutable_block() = a1;
+   mempool.handle_block( bam );
+
+   *bam.mutable_block() = b1;
+   mempool.handle_block( bam );
+
+   mempool.add_pending_transaction( t1, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+   BOOST_REQUIRE( !mempool.check_account_nonce( payer, t1.header().nonce(), a1_id ) );
+   BOOST_REQUIRE( !mempool.check_account_nonce( payer, t1.header().nonce(), b1_id ) );
+   BOOST_REQUIRE( mempool.has_pending_transaction( t1.id(), a1_id ) );
+   BOOST_REQUIRE( mempool.has_pending_transaction( t1.id(), b1_id ) );
+
+   t2.mutable_header()->set_rc_limit( 20 );
+   t2.mutable_header()->set_payer( payer );
+   t2.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+   t2.set_id( sign( _key1, t2 ) );
+
+   BOOST_REQUIRE_THROW( mempool.add_pending_transaction( t2, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ), mempool::pending_transaction_nonce_conflict );
+
+   protocol::block a2;
+   a2.mutable_header()->set_height( 2 );
+   a2.mutable_header()->set_timestamp( 2 );
+   a2.mutable_header()->set_signer( producer1 );
+   a2.mutable_header()->set_previous( a1.id() );
+   *a2.add_transactions() = t1;
+   auto a2_id = crypto::hash( crypto::multicodec::sha2_256, a2.header() );
+   a2.set_id( util::converter::as< std::string >( a2_id ) );
+
+   *bam.mutable_block() = a2;
+   bam.set_live( true );
+   mempool.handle_block( bam );
+
+   BOOST_REQUIRE( mempool.check_account_nonce( payer, t1.header().nonce(), a2_id ) );
+}
+
 BOOST_AUTO_TEST_SUITE_END()

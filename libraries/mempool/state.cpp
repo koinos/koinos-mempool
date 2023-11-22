@@ -8,6 +8,7 @@ constexpr uint32_t mempool_metadata_id    = 1;
 constexpr uint32_t pending_transaction_id = 2;
 constexpr uint32_t transaction_index_id   = 3;
 constexpr uint32_t address_resources_id   = 4;
+constexpr uint32_t account_nonce_id       = 5;
 
 const chain::object_space make_mempool_metadata()
 {
@@ -37,6 +38,13 @@ const chain::object_space make_address_resources()
    return s;
 }
 
+const chain::object_space make_account_nonce()
+{
+   chain::object_space s;
+   s.set_id( account_nonce_id );
+   return s;
+}
+
 } // detail
 
 const chain::object_space& mempool_metadata()
@@ -60,6 +68,12 @@ const chain::object_space& transaction_index()
 const chain::object_space& address_resources()
 {
    static auto s = detail::make_address_resources();
+   return s;
+}
+
+const chain::object_space& account_nonce()
+{
+   static auto s = detail::make_account_nonce();
    return s;
 }
 
