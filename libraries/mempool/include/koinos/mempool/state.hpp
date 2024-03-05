@@ -9,5 +9,6 @@ const chain::object_space& mempool_metadata();
 const chain::object_space& pending_transaction();
 const chain::object_space& transaction_index();
 const chain::object_space& address_resources();
+const chain::object_space& account_nonce();
 
 } // koinos::mempool::space

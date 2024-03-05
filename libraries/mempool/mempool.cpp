@@ -12,6 +12,7 @@
 #include <koinos/mempool/mempool.pb.h>
 
 #include <koinos/util/base58.hpp>
+#include <koinos/util/base64.hpp>
 #include <koinos/util/conversion.hpp>
 #include <koinos/util/hex.hpp>
 
@@ -40,6 +41,10 @@ private:
       uint64_t max_payer_resources,
       uint64_t trx_resource_limit ) const;
 
+   bool check_account_nonce_on_node(
+      state_db::abstract_state_node_ptr node,
+      const std::string& account_nonce_key ) const;
+
    uint64_t add_pending_transaction_to_node(
       state_db::anonymous_state_node_ptr node,
       const protocol::transaction& transaction,
@@ -63,6 +68,11 @@ public:
       uint64_t trx_resource_limit,
       std::optional< crypto::multihash > block_id = {} ) const;
 
+   bool check_account_nonce(
+      const account_type& payer,
+      const std::string& nonce,
+      std::optional< crypto::multihash > block_id = {} ) const;
+
    uint64_t add_pending_transaction(
       const protocol::transaction& transaction,
       std::chrono::system_clock::time_point time,
@@ -78,6 +88,25 @@ public:
    void handle_block( const koinos::broadcast::block_accepted& bam );
    void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
+
+std::string create_account_nonce_key( const protocol::transaction& transaction )
+{
+   std::vector< char > account_nonce_bytes;
+
+   if ( transaction.header().payee().size() )
+   {
+      account_nonce_bytes.reserve( transaction.header().payee().size() + transaction.header().nonce().size() );
+      account_nonce_bytes.insert( account_nonce_bytes.end(), transaction.header().payee().begin(), transaction.header().payee().end() );
+   }
+   else
+   {
+      account_nonce_bytes.reserve( transaction.header().payer().size() + transaction.header().nonce().size() );
+      account_nonce_bytes.insert( account_nonce_bytes.end(), transaction.header().payer().begin(), transaction.header().payer().end() );
+   }
+
+   account_nonce_bytes.insert( account_nonce_bytes.end(), transaction.header().nonce().begin(), transaction.header().nonce().end() );
+   return std::string( account_nonce_bytes.begin(), account_nonce_bytes.end() );
+}
 
 mempool_impl::mempool_impl( state_db::fork_resolution_algorithm algo )
 {
@@ -301,6 +330,55 @@ bool mempool_impl::check_pending_account_resources_on_node(
    return trx_resource_limit <= max_payer_resources;
 }
 
+bool mempool_impl::check_account_nonce(
+   const account_type& payee,
+   const std::string& nonce,
+   std::optional< crypto::multihash > block_id ) const
+{
+   auto lock = _db.get_shared_lock();
+
+   std::vector< char > account_nonce_bytes;
+   account_nonce_bytes.reserve( payee.size() + nonce.size() );
+   account_nonce_bytes.insert( account_nonce_bytes.end(), payee.begin(), payee.end() );
+   account_nonce_bytes.insert( account_nonce_bytes.end(), nonce.begin(), nonce.end() );
+   std::string account_nonce_key( account_nonce_bytes.begin(), account_nonce_bytes.end() );
+
+   if ( block_id.has_value() )
+   {
+      auto node = relevant_node( block_id, lock );
+
+      KOINOS_ASSERT(
+         node,
+         pending_transaction_unknown_block,
+         "cannot check pending account resources from an unknown block"
+      );
+
+      return check_account_nonce_on_node( node, account_nonce_key );
+   }
+   else
+   {
+      auto nodes = _db.get_all_nodes( lock );
+
+      for ( auto node : nodes )
+      {
+         if ( node->is_finalized() )
+            continue;
+
+         if ( check_account_nonce_on_node( node, account_nonce_key ) )
+            return true;
+      }
+
+      return false;
+   }
+}
+
+bool mempool_impl::check_account_nonce_on_node(
+   state_db::abstract_state_node_ptr node,
+   const std::string& account_nonce_key ) const
+{
+   return node->get_object( space::account_nonce(), account_nonce_key ) == nullptr;
+}
+
 uint64_t mempool_impl::add_pending_transaction_to_node(
    state_db::anonymous_state_node_ptr node,
    const protocol::transaction& transaction,
@@ -323,6 +401,16 @@ uint64_t mempool_impl::add_pending_transaction_to_node(
       node->get_object( space::transaction_index(), transaction.id() ) == nullptr,
       pending_transaction_insertion_failure,
       "cannot insert duplicate transaction"
+   );
+
+   auto account_nonce_key = create_account_nonce_key( transaction );
+
+   KOINOS_ASSERT(
+      check_account_nonce_on_node( node, account_nonce_key ),
+      pending_transaction_nonce_conflict,
+      "cannot insert transaction for account with duplicate nonce - account: ${a}, nonce: ${n}",
+      ("a", util::to_base58( transaction.header().payer() ))
+      ("n", util::to_base64( transaction.header().nonce() ))
    );
 
    // Grab the latest metadata object if it exists
@@ -378,6 +466,9 @@ uint64_t mempool_impl::add_pending_transaction_to_node(
    auto address_resource_bytes = util::converter::as< std::string >( arr );
    node->put_object( space::address_resources(), transaction.header().payer(), &address_resource_bytes );
 
+   std::string account_nonce_value;
+   node->put_object( space::account_nonce(), account_nonce_key, &account_nonce_value );
+
    return rc_used;
 }
 
@@ -399,6 +490,8 @@ uint64_t mempool_impl::add_pending_transaction(
       std::vector< state_db::anonymous_state_node_ptr > anonymous_state_nodes;
       auto tmp_head = relevant_node( _db.get_head( lock )->id(), lock );
 
+      bool trx_added = false;
+
       for ( auto state_node : nodes )
       {
          if ( state_node->is_finalized() )
@@ -407,20 +500,31 @@ uint64_t mempool_impl::add_pending_transaction(
          auto node = state_node->create_anonymous_node();
          anonymous_state_nodes.push_back( node );
 
-         auto rc = add_pending_transaction_to_node(
-            node,
-            transaction,
-            time,
-            max_payer_rc,
-            disk_storaged_used,
-            network_bandwidth_used,
-            compute_bandwidth_used
-         );
+         try
+         {
+            auto rc = add_pending_transaction_to_node(
+               node,
+               transaction,
+               time,
+               max_payer_rc,
+               disk_storaged_used,
+               network_bandwidth_used,
+               compute_bandwidth_used
+            );
 
-         // We're only returning the RC used as it pertains to head
-         if ( state_node->id() == tmp_head->id() )
-            rc_used = rc;
+            // We're only returning the RC used as it pertains to head
+            if ( state_node->id() == tmp_head->id() )
+               rc_used = rc;
+
+            trx_added = true;
+         }
+         catch ( const pending_transaction_nonce_conflict& )
+         {
+            continue;
+         }
       }
+
+      KOINOS_ASSERT( trx_added, pending_transaction_nonce_conflict, "transaction nonce conflict" );
 
       for ( auto anonymous_state_node : anonymous_state_nodes )
          anonymous_state_node->commit();
@@ -481,6 +585,7 @@ uint64_t mempool_impl::remove_pending_transactions_on_node( state_db::state_node
       cleanup_account_resources_on_node( node, pending_tx );
       node->remove_object( space::pending_transaction(), *seq_obj );
       node->remove_object( space::transaction_index(), id );
+      node->remove_object( space::account_nonce(), create_account_nonce_key( pending_tx.transaction() ) );
 
       count++;
    }
@@ -515,6 +620,7 @@ uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::syst
          cleanup_account_resources_on_node( node, pending_tx );
          node->remove_object( space::pending_transaction(), key );
          node->remove_object( space::transaction_index(), pending_tx.transaction().id() );
+         node->remove_object( space::account_nonce(), create_account_nonce_key( pending_tx.transaction() ) );
 
          // Only consider pruned transactions on the fork considered head
          if ( block_node->id() == head->id() )
@@ -565,6 +671,14 @@ bool mempool::check_pending_account_resources(
    std::optional< crypto::multihash > block_id ) const
 {
    return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit, block_id );
+}
+
+bool mempool::check_account_nonce(
+   const account_type& payee,
+   const std::string& nonce,
+   std::optional< crypto::multihash > block_id ) const
+{
+   return _my->check_account_nonce( payee, nonce, block_id );
 }
 
 uint64_t mempool::add_pending_transaction(
