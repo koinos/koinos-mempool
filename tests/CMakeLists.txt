@@ -1,61 +1,38 @@
-find_package(Gperftools QUIET)
-if(GPERFTOOLS_FOUND)
-    message(STATUS "Found gperftools; compiling tests with TCMalloc")
-    list(APPEND PLATFORM_SPECIFIC_LIBS tcmalloc)
+if (NOT BUILD_TESTING)
+  return()
 endif()
 
 include(CTest)
 
-enable_testing()
+koinos_add_test(
+  mempool_tests
+    SOURCES
+      main.cpp
+      mempool_tests.cpp)
 
-file(GLOB UNIT_TESTS "tests/*.cpp")
-file(GLOB_RECURSE TEST_FIXTURES "include/*.hpp")
+target_link_libraries(
+  mempool_tests
+    PRIVATE
+      mempool
+      Koinos::crypto
+      Koinos::exception
+      Koinos::log
+      Koinos::proto
+      Koinos::state_db
+      Koinos::util)
 
-include(BoostTestTargets.cmake)
-
-function(parse_unit_tests RESULT)
-   set(SOURCES)
-	foreach(_element ${ARGN})
-      list(APPEND SOURCES "${_element}")
-	endforeach()
-
-   set(tests)
-
-   foreach(src ${SOURCES})
-      file(READ ${src} thefile)
-      string(REGEX MATCH "BOOST_FIXTURE_TEST_SUITE\\([A-Za-z0-9_,<> ]*\\)" test_suite "${thefile}" )
-
-      if( NOT (test_suite STREQUAL "") )
-         string(SUBSTRING "${test_suite}" 25 -1 test_suite)
-         string(FIND "${test_suite}" "," comma_loc )
-         string(SUBSTRING "${test_suite}" 0 ${comma_loc} test_suite)
-         string(STRIP "${test_suite}" test_suite)
-
-         string( REGEX MATCHALL "BOOST_AUTO_TEST_CASE\\([A-Za-z0-9_,<> ]*\\)" cases "${thefile}" )
-
-         foreach( test_case ${cases} )
-            string(SUBSTRING "${test_case}" 21 -1 test_case)
-            string(FIND "${test_case}" ")" paren_loc )
-            string(SUBSTRING "${test_case}" 0 ${paren_loc} test_case)
-            string(STRIP "${test_case}" test_case)
-
-            list(APPEND tests "${test_suite}/${test_case}")
-         endforeach()
-      endif()
-   endforeach()
-
-   set(${RESULT} ${tests} PARENT_SCOPE)
-endfunction()
-
-parse_unit_tests(TEST_CASES ${UNIT_TESTS})
-
-add_boost_test(koinos_mempool_tests
-   SOURCES ${UNIT_TESTS} ${TEST_FIXTURES}
-   TESTS ${TEST_CASES}
+target_include_directories(
+  mempool_tests
+    PUBLIC
+    ${PROJECT_SOURCE_DIR}/src # private headers
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>  # <prefix>/include
 )
 
-target_link_libraries(koinos_mempool_tests Koinos::proto Koinos::mempool Koinos::crypto Koinos::exception ${PLATFORM_SPECIFIC_LIBS})
-target_include_directories(koinos_mempool_tests PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>  # <prefix>/include
-)
+koinos_add_format(TARGET mempool_tests)
+
+koinos_coverage(
+  EXECUTABLE
+    mempool_tests
+  EXCLUDE
+    "tests/*")
