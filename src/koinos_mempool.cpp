@@ -101,6 +101,8 @@ int main( int argc, char** argv )
    try
    {
       program_options::options_description options;
+
+      // clang-format off
       options.add_options()
          (HELP_OPTION                  ",h", "Print this help message and exit")
          (VERSION_OPTION               ",v", "Print version string and exit")
@@ -114,6 +116,7 @@ int main( int argc, char** argv )
          (LOG_DIR_OPTION                   , program_options::value< std::string >(), "The logging directory")
          (LOG_COLOR_OPTION                 , program_options::value< bool >(), "Log color toggle")
          (LOG_DATETIME_OPTION              , program_options::value< bool >(), "Log datetime on console toggle");
+      // clang-format on
 
       program_options::variables_map args;
       program_options::store( program_options::parse_command_line( argc, argv, options ), args );
@@ -153,6 +156,7 @@ int main( int argc, char** argv )
          mempool_config = config[ util::service::mempool ];
       }
 
+      // clang-format off
       auto amqp_url           = util::get_option< std::string >( AMQP_OPTION, AMQP_DEFAULT, args, mempool_config, global_config );
       auto log_level          = util::get_option< std::string >( LOG_LEVEL_OPTION, LOG_LEVEL_DEFAULT, args, mempool_config, global_config );
       auto log_dir            = util::get_option< std::string >( LOG_DIR_OPTION, LOG_DIR_DEFAULT, args, mempool_config, global_config );
@@ -162,6 +166,7 @@ int main( int argc, char** argv )
       auto jobs               = util::get_option< uint64_t >( JOBS_OPTION, std::max( JOBS_DEFAULT, uint64_t( std::thread::hardware_concurrency() ) ), args, mempool_config, global_config );
       auto tx_expiration      = std::chrono::seconds( util::get_option< uint64_t >( TRANSACTION_EXPIRATION_OPTION, TRANSACTION_EXPIRATION_DEFAULT, args, mempool_config, global_config ) );
       auto fork_algorithm_opt = util::get_option< std::string >( FORK_ALGORITHM_OPTION, FORK_ALGORITHM_DEFAULT, args, mempool_config, global_config );
+      // clang-format on
 
       std::optional< std::filesystem::path > logdir_path;
       if ( !log_dir.empty() )

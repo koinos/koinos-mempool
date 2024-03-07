@@ -1,5 +1,3 @@
-# libkoinos_mempool
-
 add_library(mempool
   koinos/mempool/mempool.cpp
   koinos/mempool/state.cpp
@@ -13,19 +11,16 @@ target_link_libraries(
       Koinos::exception 
       Koinos::log 
       Koinos::state_db
-      Koinos::util 
-)
+      Koinos::util)
+
 target_include_directories(
   mempool
     PRIVATE
-      ${PROJECT_SOURCE_DIR}/src
-)
+      ${CMAKE_CURRENT_SOURCE_DIR})
 
 koinos_add_format(TARGET mempool)
 
-# koinos_mempool
-
-add_executable(koinos_mempool main.cpp)
+add_executable(koinos_mempool koinos_mempool.cpp)
 target_link_libraries(
   koinos_mempool
     PUBLIC
@@ -38,14 +33,13 @@ target_link_libraries(
       Koinos::proto   
       Boost::exception
       Boost::program_options 
-      yaml-cpp
-)
+      yaml-cpp)
+
 target_include_directories(
   koinos_mempool
     PRIVATE
-      ${PROJECT_SOURCE_DIR}/src
-)
-
-koinos_install(TARGETS koinos_mempool)
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
 koinos_add_format(TARGET koinos_mempool)
+
+koinos_install(TARGETS koinos_mempool)
