@@ -271,7 +271,6 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
     next = key;
 
     auto pending_tx = util::converter::to< pending_transaction_record >( *value );
-    uint64_t seq_no = util::converter::to< uint64_t >( key );
 
     rpc::mempool::pending_transaction ptx;
     *ptx.mutable_transaction() = pending_tx.transaction();
