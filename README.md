@@ -9,7 +9,6 @@ This project's structure follows the [Pitchfork](https://api.csswg.org/bikeshed/
 ```
 ├── build/   # An ephemeral directory for building the project. Not checked in, but excluded via .gitignore.
 ├── src/     # Contains all source code and private headers for Koinos Mempool.
-├── tools/   # Contains additional tooling for Koinos Mempool, primarily WASM test code.
 └── tests/   # Contains tests for Koinos Mempool.
 ```
 
