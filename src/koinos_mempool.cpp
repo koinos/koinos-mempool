@@ -316,17 +316,17 @@ int main( int argc, char** argv )
 
                   break;
                 }
-              case rpc::mempool::mempool_request::RequestCase::kCheckAccountNonce:
-                {
-                  const auto& p = args.check_account_nonce();
-                  resp.mutable_check_account_nonce()->set_success( mempool->check_account_nonce(
-                    p.payee(),
-                    p.nonce(),
-                    p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
-                                     : std::optional< crypto::multihash >{} ) );
+              // case rpc::mempool::mempool_request::RequestCase::kCheckAccountNonce:
+              //   {
+              //     const auto& p = args.check_account_nonce();
+              //     resp.mutable_check_account_nonce()->set_success( mempool->check_account_nonce(
+              //       p.payee(),
+              //       p.nonce(),
+              //       p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
+              //                        : std::optional< crypto::multihash >{} ) );
 
-                  break;
-                }
+              //     break;
+              //   }
               case rpc::mempool::mempool_request::RequestCase::kReserved:
                 resp.mutable_reserved();
                 break;
