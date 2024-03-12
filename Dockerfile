@@ -1,4 +1,6 @@
-FROM alpine:latest as builder
+FROM alpine:3.18 as builder
+
+ARG BUILD_THREADS
 
 RUN apk update && \
     apk add  \
@@ -10,29 +12,25 @@ RUN apk update && \
         libgmpxx \
         cmake \
         make \
-        git \
-        perl \
-        python3 \
-        py3-pip \
-        py3-setuptools && \
-    pip3 install --user dataclasses_json Jinja2 importlib_resources pluginbase gitpython
+        git
 
-ADD . /koinos-mempool
-WORKDIR /koinos-mempool
+ADD . /build
+WORKDIR /build
 
-ENV CC=/usr/lib/ccache/bin/gcc
-ENV CXX=/usr/lib/ccache/bin/g++
+ENV CC=gcc
+ENV CXX=g++
+ENV CMAKE_C_COMPILER_LAUNCHER=ccache
+ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache
+ENV CCACHE_DIR /build/.ccache
 
-RUN mkdir -p /koinos-chain/.ccache && \
-    ln -s /koinos-chain/.ccache $HOME/.ccache && \
-    git submodule update --init --recursive && \
+RUN git submodule update --init --recursive && \
     cmake -DCMAKE_BUILD_TYPE=Release . && \
-    cmake --build . --config Release --parallel
+    cmake --build . --config Release --parallel $BUILD_THREADS
 
 FROM alpine:latest
 RUN apk update && \
     apk add \
         musl \
         libstdc++
-COPY --from=builder /koinos-mempool/programs/koinos_mempool/koinos_mempool /usr/local/bin
+COPY --from=builder /build/src/koinos_mempool /usr/local/bin
 ENTRYPOINT [ "/usr/local/bin/koinos_mempool" ]
