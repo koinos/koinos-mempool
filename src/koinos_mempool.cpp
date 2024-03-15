@@ -327,6 +327,29 @@ int main( int argc, char** argv )
 
                   break;
                 }
+              case rpc::mempool::mempool_request::RequestCase::kCheckTransactionEligibility:
+                {
+                  const auto& p = args.check_transaction_eligibility();
+                  resp.mutable_check_transaction_eligibility()->set_success( false );
+
+                  if( !mempool->check_pending_account_resources(
+                        p.payer(),
+                        p.max_payer_rc(),
+                        p.rc_limit(),
+                        p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
+                                         : std::optional< crypto::multihash >{} ) )
+                    break;
+
+                  if( !mempool->check_account_nonce( p.payee(),
+                                                     p.nonce(),
+                                                     p.has_block_id()
+                                                       ? util::converter::to< crypto::multihash >( p.block_id() )
+                                                       : std::optional< crypto::multihash >{} ) )
+                    break;
+
+                  resp.mutable_check_transaction_eligibility()->set_success( true );
+                  break;
+                }
               case rpc::mempool::mempool_request::RequestCase::kReserved:
                 resp.mutable_reserved();
                 break;
