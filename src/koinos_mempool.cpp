@@ -436,11 +436,12 @@ int main( int argc, char** argv )
 
                                              try
                                              {
-                                               applicator.handle_block( block_accept,
-                                                                        [ & ]( const broadcast::block_accepted& block_accept ) -> bool
-                                                                        {
-                                                                          return mempool->handle_block( block_accept );
-                                                                        } );
+                                               applicator.handle_block(
+                                                 block_accept,
+                                                 [ & ]( const broadcast::block_accepted& block_accept ) -> bool
+                                                 {
+                                                   return mempool->handle_block( block_accept );
+                                                 } );
                                              }
                                              catch( const std::exception& e )
                                              {

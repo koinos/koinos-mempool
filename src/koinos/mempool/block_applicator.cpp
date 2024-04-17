@@ -20,23 +20,24 @@ void block_applicator::handle_block( const broadcast::block_accepted& bam,
 
     while( applied_blocks.size() )
     {
-      const auto& [id, height] = applied_blocks.front();
+      const auto& [ id, height ] = applied_blocks.front();
 
       if( auto blocks_itr = _block_map.find( height + 1 ); blocks_itr != _block_map.end() )
       {
         std::erase_if( blocks_itr->second,
-                      [ & ]( broadcast::block_accepted& bam )
-                      {
-                        if( bam.block().header().previous() != id )
-                          return false;
+                       [ & ]( broadcast::block_accepted& bam )
+                       {
+                         if( bam.block().header().previous() != id )
+                           return false;
 
-                        if( !handle_block_func( bam ) )
-                          return false;
+                         if( !handle_block_func( bam ) )
+                           return false;
 
-                        applied_blocks.emplace_back( std::make_pair( bam.block().id(), bam.block().header().height() ) );
+                         applied_blocks.emplace_back(
+                           std::make_pair( bam.block().id(), bam.block().header().height() ) );
 
-                        return true;
-                      } );
+                         return true;
+                       } );
       }
 
       applied_blocks.pop_front();

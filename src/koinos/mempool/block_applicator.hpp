@@ -15,7 +15,8 @@ private:
   std::mutex _map_mutex;
 
 public:
-  void handle_block( const broadcast::block_accepted& bam, std::function< bool( const broadcast::block_accepted& ) > handle_block_func );
+  void handle_block( const broadcast::block_accepted& bam,
+                     std::function< bool( const broadcast::block_accepted& ) > handle_block_func );
   void handle_irreversible( uint64_t block_height );
 };
 
