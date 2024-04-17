@@ -331,6 +331,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 BOOST_AUTO_TEST_CASE( fork_test )
 {
   mempool::mempool mempool( state_db::fork_resolution_algorithm::block_time );
+  broadcast::block_accepted bam;
 
   auto payer1           = _key1.get_public_key().to_address_bytes();
   auto payer2           = _key2.get_public_key().to_address_bytes();
@@ -401,11 +402,13 @@ BOOST_AUTO_TEST_CASE( fork_test )
   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[ 0 ].transaction().id() );
 
   *b2.add_transactions() = t1;
-  mempool.handle_block( b2 );
+  *bam.mutable_block()   = b2;
+  mempool.handle_block( bam );
 
   BOOST_REQUIRE_EQUAL( 0, mempool.get_pending_transactions().size() );
 
-  mempool.handle_block( b1 );
+  *bam.mutable_block() = b1;
+  mempool.handle_block( bam );
 
   BOOST_REQUIRE_EQUAL( 1, mempool.get_pending_transactions().size() );
 
@@ -421,7 +424,8 @@ BOOST_AUTO_TEST_CASE( fork_test )
   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[ 2 ].transaction().id() );
 
   *b4.add_transactions() = t2;
-  mempool.handle_block( b4 );
+  *bam.mutable_block()   = b4;
+  mempool.handle_block( bam );
 
   BOOST_REQUIRE_EQUAL( 2, mempool.get_pending_transactions().size() );
   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[ 0 ].transaction().id() );
@@ -433,7 +437,8 @@ BOOST_AUTO_TEST_CASE( fork_test )
   BOOST_REQUIRE_EQUAL( t3.id(), mempool.get_pending_transactions()[ 1 ].transaction().id() );
   BOOST_REQUIRE_EQUAL( t4.id(), mempool.get_pending_transactions()[ 2 ].transaction().id() );
 
-  mempool.handle_block( b3 );
+  *bam.mutable_block() = b3;
+  mempool.handle_block( bam );
 
   BOOST_REQUIRE_EQUAL( 4, mempool.get_pending_transactions().size() );
   BOOST_REQUIRE_EQUAL( t1.id(), mempool.get_pending_transactions()[ 0 ].transaction().id() );
@@ -519,6 +524,7 @@ BOOST_AUTO_TEST_CASE( nonce_fork_test )
   uint64_t trx_resource_limit;
   chain::value_type nonce_value;
 
+  broadcast::block_accepted bam;
   producer1 = _key1.get_public_key().to_address_bytes();
   producer2 = _key2.get_public_key().to_address_bytes();
   producer3 = _key3.get_public_key().to_address_bytes();
@@ -549,8 +555,11 @@ BOOST_AUTO_TEST_CASE( nonce_fork_test )
   auto b1_id = crypto::hash( crypto::multicodec::sha2_256, b1.header() );
   b1.set_id( util::converter::as< std::string >( b1_id ) );
 
-  mempool.handle_block( a1 );
-  mempool.handle_block( b1 );
+  *bam.mutable_block() = a1;
+  mempool.handle_block( bam );
+
+  *bam.mutable_block() = b1;
+  mempool.handle_block( bam );
 
   mempool.add_pending_transaction( t1, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
@@ -577,7 +586,9 @@ BOOST_AUTO_TEST_CASE( nonce_fork_test )
   auto a2_id             = crypto::hash( crypto::multicodec::sha2_256, a2.header() );
   a2.set_id( util::converter::as< std::string >( a2_id ) );
 
-  mempool.handle_block( a2 );
+  *bam.mutable_block() = a2;
+  bam.set_live( true );
+  mempool.handle_block( bam );
 
   BOOST_REQUIRE( mempool.check_account_nonce( payer, t1.header().nonce(), a2_id ) );
 }

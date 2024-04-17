@@ -82,7 +82,7 @@ public:
 
   uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
 
-  bool handle_block( const koinos::protocol::block& block );
+  bool handle_block( const koinos::broadcast::block_accepted& bam );
   void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
 
@@ -169,13 +169,13 @@ state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::mul
   return node;
 }
 
-bool mempool_impl::handle_block( const koinos::protocol::block& block )
+bool mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
 {
-  auto block_id    = util::converter::to< crypto::multihash >( block.id() );
-  auto previous_id = util::converter::to< crypto::multihash >( block.header().previous() );
+  auto block_id    = util::converter::to< crypto::multihash >( bam.block().id() );
+  auto previous_id = util::converter::to< crypto::multihash >( bam.block().header().previous() );
   auto lock        = _db.get_unique_lock();
 
-  LOG( debug ) << "Handling block - Height: " << block.header().height() << ", ID: " << block_id;
+  LOG( debug ) << "Handling block - Height: " << bam.block().header().height() << ", ID: " << block_id;
 
   try
   {
@@ -193,19 +193,19 @@ bool mempool_impl::handle_block( const koinos::protocol::block& block )
     if( !node )
       return false;
 
-    node = _db.clone_node( node_id, block_id, block.header(), lock );
+    node = _db.clone_node( node_id, block_id, bam.block().header(), lock );
 
     std::vector< transaction_id_type > ids;
 
-    for( int i = 0; i < block.transactions_size(); ++i )
-      ids.emplace_back( block.transactions( i ).id() );
+    for( int i = 0; i < bam.block().transactions_size(); ++i )
+      ids.emplace_back( bam.block().transactions( i ).id() );
 
     const auto removed_count = remove_pending_transactions_on_node( node, ids );
 
-    if( removed_count )
+    if( bam.live() && removed_count )
       LOG( info ) << "Removed " << removed_count
-                  << " included transaction(s) via block - Height: " << block.header().height()
-                  << ", ID: " << util::to_hex( block.id() );
+                  << " included transaction(s) via block - Height: " << bam.block().header().height()
+                  << ", ID: " << util::to_hex( bam.block().id() );
   }
   catch( ... )
   {
@@ -706,9 +706,9 @@ uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_cl
   return _my->prune( expiration, now );
 }
 
-bool mempool::handle_block( const koinos::protocol::block& block )
+bool mempool::handle_block( const koinos::broadcast::block_accepted& bam )
 {
-  return _my->handle_block( block );
+  return _my->handle_block( bam );
 }
 
 void mempool::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )

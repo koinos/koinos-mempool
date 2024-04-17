@@ -71,7 +71,7 @@ public:
   uint64_t prune( std::chrono::seconds expiration,
                   std::chrono::system_clock::time_point now = std::chrono::system_clock::now() );
 
-  bool handle_block( const koinos::protocol::block& block );
+  bool handle_block( const koinos::broadcast::block_accepted& bam );
   void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
 
