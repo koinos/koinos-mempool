@@ -1,6 +1,7 @@
 #include <koinos/mempool/block_applicator.hpp>
 
 #include <deque>
+#include <string>
 
 namespace koinos::mempool {
 
@@ -20,12 +21,17 @@ void block_applicator::handle_block( const broadcast::block_accepted& bam,
 
     while( applied_blocks.size() )
     {
-      const auto& [ id, height ] = applied_blocks.front();
+      std::string id;
+      uint64_t height;
+      std::tie( id, height ) = applied_blocks.front();
+
+      // Static analysis doesn't like this?
+      // auto [ id, height ] = applied_blocks.front();
 
       if( auto blocks_itr = _block_map.find( height + 1 ); blocks_itr != _block_map.end() )
       {
         std::erase_if( blocks_itr->second,
-                       [ & ]( broadcast::block_accepted& bam )
+                       [ & ]( const broadcast::block_accepted& bam )
                        {
                          if( bam.block().header().previous() != id )
                            return false;
