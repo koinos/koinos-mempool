@@ -8,7 +8,8 @@ koinos_add_test(
   mempool_tests
     SOURCES
       main.cpp
-      mempool_tests.cpp)
+      mempool_tests.cpp
+      block_applicator_tests.cpp)
 
 target_link_libraries(
   mempool_tests
