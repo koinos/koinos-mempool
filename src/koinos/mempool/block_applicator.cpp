@@ -25,9 +25,6 @@ void block_applicator::handle_block( const broadcast::block_accepted& bam,
       uint64_t height;
       std::tie( id, height ) = applied_blocks.front();
 
-      // Static analysis doesn't like this?
-      // auto [ id, height ] = applied_blocks.front();
-
       if( auto blocks_itr = _block_map.find( height + 1 ); blocks_itr != _block_map.end() )
       {
         std::erase_if( blocks_itr->second,
