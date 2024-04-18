@@ -82,7 +82,7 @@ public:
 
   uint64_t prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now );
 
-  void handle_block( const koinos::broadcast::block_accepted& bam );
+  bool handle_block( const koinos::broadcast::block_accepted& bam );
   void handle_irreversibility( const koinos::broadcast::block_irreversible& bi );
 };
 
@@ -169,7 +169,7 @@ state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::mul
   return node;
 }
 
-void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
+bool mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
 {
   auto block_id    = util::converter::to< crypto::multihash >( bam.block().id() );
   auto previous_id = util::converter::to< crypto::multihash >( bam.block().header().previous() );
@@ -189,10 +189,9 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
       node_id = tmp_id( root_id );
 
     auto node = _db.get_node( node_id, lock );
-    KOINOS_ASSERT( node,
-                   pending_transaction_unlinkable_block,
-                   "encountered an unlinkable block - Height: ${h}, ID: ${i}",
-                   ( "h", bam.block().header().height() )( "i", util::to_hex( bam.block().id() ) ) );
+
+    if( !node )
+      return false;
 
     node = _db.clone_node( node_id, block_id, bam.block().header(), lock );
 
@@ -219,6 +218,8 @@ void mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
   _db.finalize_node( block_id, lock );
   [[maybe_unused]] auto node = _db.create_writable_node( block_id, tmp_id( block_id ), protocol::block_header(), lock );
   assert( node );
+
+  return true;
 }
 
 void mempool_impl::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )
@@ -705,9 +706,9 @@ uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_cl
   return _my->prune( expiration, now );
 }
 
-void mempool::handle_block( const koinos::broadcast::block_accepted& bam )
+bool mempool::handle_block( const koinos::broadcast::block_accepted& bam )
 {
-  _my->handle_block( bam );
+  return _my->handle_block( bam );
 }
 
 void mempool::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )

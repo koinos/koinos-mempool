@@ -14,6 +14,7 @@
 
 #include <koinos/broadcast/broadcast.pb.h>
 #include <koinos/exception.hpp>
+#include <koinos/mempool/block_applicator.hpp>
 #include <koinos/mempool/mempool.hpp>
 #include <koinos/mq/client.hpp>
 #include <koinos/mq/request_handler.hpp>
@@ -71,6 +72,8 @@ int main( int argc, char** argv )
   auto request_handler = koinos::mq::request_handler( server_ioc );
   auto client          = koinos::mq::client( client_ioc );
   auto timer           = boost::asio::system_timer( server_ioc );
+
+  mempool::block_applicator applicator;
 
   timer_func_type timer_func = [ & ]( const boost::system::error_code& ec,
                                       std::shared_ptr< koinos::mempool::mempool > mpool,
@@ -264,6 +267,7 @@ int main( int argc, char** argv )
 
                                              try
                                              {
+                                               applicator.handle_irreversible( block_irr.topology().height() );
                                                mempool->handle_irreversibility( block_irr );
                                              }
                                              catch( const koinos::exception& e )
@@ -338,7 +342,13 @@ int main( int argc, char** argv )
           {
             auto error = resp.mutable_error();
             error->set_message( e.what() );
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             error->set_data( e.get_stacktrace() );
+#pragma GCC diagnostic pop
+#pragma clang diagnostic pop
           }
           catch( std::exception& e )
           {
@@ -426,7 +436,12 @@ int main( int argc, char** argv )
 
                                              try
                                              {
-                                               mempool->handle_block( block_accept );
+                                               applicator.handle_block(
+                                                 block_accept,
+                                                 [ & ]( const broadcast::block_accepted& block_accept ) -> bool
+                                                 {
+                                                   return mempool->handle_block( block_accept );
+                                                 } );
                                              }
                                              catch( const std::exception& e )
                                              {

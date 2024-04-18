@@ -1,15 +1,17 @@
 add_library(mempool
+  koinos/mempool/block_applicator.cpp
   koinos/mempool/mempool.cpp
   koinos/mempool/state.cpp
 
+  koinos/mempool/block_applicator.hpp
   koinos/mempool/mempool.hpp
   koinos/mempool/state.hpp)
 
 target_link_libraries(
   mempool
     PUBLIC
-      Koinos::exception 
-      Koinos::log 
+      Koinos::exception
+      Koinos::log
       Koinos::state_db
       Koinos::util)
 
@@ -25,14 +27,14 @@ target_link_libraries(
   koinos_mempool
     PUBLIC
       mempool
-      Koinos::crypto 
+      Koinos::crypto
       Koinos::exception
       Koinos::git
-      Koinos::log 
+      Koinos::log
       Koinos::mq
-      Koinos::proto   
+      Koinos::proto
       Boost::exception
-      Boost::program_options 
+      Boost::program_options
       yaml-cpp)
 
 target_include_directories(
