@@ -77,7 +77,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
   auto rc_used = mempool.add_pending_transaction( t1, std::chrono::system_clock::now(), max_payer_resources, 1, 2, 3 );
   BOOST_CHECK_EQUAL( t1.header().rc_limit(), rc_used );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), rc_used );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_used );
 
   BOOST_TEST_MESSAGE( "adding duplicate pending transaction" );
   BOOST_REQUIRE_THROW(
@@ -124,7 +124,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
   BOOST_TEST_MESSAGE( "removing pending transactions" );
   mempool.remove_pending_transactions( std::vector< mempool::transaction_id_type >{ t1.id() } );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), 0 );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), 0 );
 
   BOOST_TEST_MESSAGE( "checking pending transaction list" );
   {
@@ -272,7 +272,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), 1'000'000'000'000 );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), 1'000'000'000'000 );
 
   for( unsigned int i = 2; i < 10; i++ )
   {
@@ -287,7 +287,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
     mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
     rc_pending += trx_resource_limit;
-    BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), rc_pending );
+    BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
   }
 
   max_payer_resources = max_payer_resources + 99;
@@ -302,7 +302,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
     mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ),
     mempool::pending_transaction_exceeds_resources );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), rc_pending );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
 
   BOOST_TEST_MESSAGE( "lose max account resources" );
 
@@ -318,7 +318,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), rc_pending );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
 
   max_payer_resources  = 999'999'999'990;
   trx_resource_limit   = 10;
@@ -332,7 +332,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
 
   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), rc_pending );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
 
   trx_resource_limit = 1;
   nonce_value.set_uint64_value( 12 );
@@ -345,7 +345,7 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
     mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 ),
     mempool::pending_transaction_exceeds_resources );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), rc_pending );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
 }
 
 BOOST_AUTO_TEST_CASE( fork_test )
@@ -669,7 +669,7 @@ BOOST_AUTO_TEST_CASE( pending_rc_fork_test )
   *bam.mutable_block() = b1;
   mempool.handle_block( bam );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), t1_rc_limit );
+  BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), t1_rc_limit );
 }
 
 BOOST_AUTO_TEST_SUITE_END()

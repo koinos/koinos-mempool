@@ -53,7 +53,7 @@ private:
                                             uint64_t network_bandwidth_used,
                                             uint64_t compute_bandwidth_used );
 
-  uint64_t get_pending_account_rc_from_node( std::shared_ptr<koinos::state_db::state_node> node, const account_type& account ) const;
+  uint64_t get_reserved_account_rc_from_node( std::shared_ptr<koinos::state_db::state_node> node, const account_type& account ) const;
 public:
   mempool_impl( state_db::fork_resolution_algorithm algo );
   virtual ~mempool_impl();
@@ -63,7 +63,7 @@ public:
   std::vector< rpc::mempool::pending_transaction >
   get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id );
 
-  uint64_t get_pending_account_rc( const account_type& account ) const;
+  uint64_t get_reserved_account_rc( const account_type& account ) const;
 
   bool check_pending_account_resources( const account_type& payer,
                                         uint64_t max_payer_resources,
@@ -288,7 +288,7 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
   return pending_transactions;
 }
 
-uint64_t mempool_impl::get_pending_account_rc_from_node( std::shared_ptr<koinos::state_db::state_node> node, const account_type& account ) const
+uint64_t mempool_impl::get_reserved_account_rc_from_node( std::shared_ptr<koinos::state_db::state_node> node, const account_type& account ) const
 {
   uint64_t max_rc     = 0;
   uint64_t current_rc = 0;
@@ -303,7 +303,7 @@ uint64_t mempool_impl::get_pending_account_rc_from_node( std::shared_ptr<koinos:
   return max_rc - current_rc;
 }
 
-uint64_t mempool_impl::get_pending_account_rc( const account_type& account ) const
+uint64_t mempool_impl::get_reserved_account_rc( const account_type& account ) const
 {
   auto lock = _db.get_shared_lock();
   auto nodes = _db.get_all_nodes( lock );
@@ -311,7 +311,7 @@ uint64_t mempool_impl::get_pending_account_rc( const account_type& account ) con
   uint64_t pending_rc = 0;
   for( auto node: nodes )
   {
-    auto rc = get_pending_account_rc_from_node( node, account );
+    auto rc = get_reserved_account_rc_from_node( node, account );
     pending_rc = rc > pending_rc ? rc : pending_rc;
   }
 
@@ -699,9 +699,9 @@ mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multih
   return _my->get_pending_transactions( limit, block_id );
 }
 
-uint64_t mempool::get_pending_account_rc( const account_type& account ) const
+uint64_t mempool::get_reserved_account_rc( const account_type& account ) const
 {
-  return _my->get_pending_account_rc( account );
+  return _my->get_reserved_account_rc( account );
 }
 
 bool mempool::check_pending_account_resources( const account_type& payer,
