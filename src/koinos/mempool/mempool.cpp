@@ -53,7 +53,9 @@ private:
                                             uint64_t network_bandwidth_used,
                                             uint64_t compute_bandwidth_used );
 
-  uint64_t get_reserved_account_rc_from_node( std::shared_ptr<koinos::state_db::state_node> node, const account_type& account ) const;
+  uint64_t get_reserved_account_rc_from_node( std::shared_ptr< koinos::state_db::state_node > node,
+                                              const account_type& account ) const;
+
 public:
   mempool_impl( state_db::fork_resolution_algorithm algo );
   virtual ~mempool_impl();
@@ -288,7 +290,8 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
   return pending_transactions;
 }
 
-uint64_t mempool_impl::get_reserved_account_rc_from_node( std::shared_ptr<koinos::state_db::state_node> node, const account_type& account ) const
+uint64_t mempool_impl::get_reserved_account_rc_from_node( std::shared_ptr< koinos::state_db::state_node > node,
+                                                          const account_type& account ) const
 {
   uint64_t max_rc     = 0;
   uint64_t current_rc = 0;
@@ -305,13 +308,13 @@ uint64_t mempool_impl::get_reserved_account_rc_from_node( std::shared_ptr<koinos
 
 uint64_t mempool_impl::get_reserved_account_rc( const account_type& account ) const
 {
-  auto lock = _db.get_shared_lock();
+  auto lock  = _db.get_shared_lock();
   auto nodes = _db.get_all_nodes( lock );
 
   uint64_t pending_rc = 0;
   for( auto node: nodes )
   {
-    auto rc = get_reserved_account_rc_from_node( node, account );
+    auto rc    = get_reserved_account_rc_from_node( node, account );
     pending_rc = rc > pending_rc ? rc : pending_rc;
   }
 
