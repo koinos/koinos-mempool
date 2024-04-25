@@ -616,10 +616,7 @@ BOOST_AUTO_TEST_CASE( nonce_fork_test )
 BOOST_AUTO_TEST_CASE( pending_rc_fork_test )
 {
   // This test tests pending rc tracking on different forks
-  //
-  // A transaction (t1) with nonce 1 will be pushed with blocks, A1, and B1
-  // Pushing a second transaction (t2) with the same nonce should fail
-  // A new block, A2 will be pushed, which contains t1 and will remove nonce 1 from A2
+  // The method should return the highest pending rc on all forks
 
   mempool::mempool mempool;
   protocol::transaction t1, t2;
