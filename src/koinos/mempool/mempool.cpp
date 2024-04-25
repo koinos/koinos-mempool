@@ -62,6 +62,8 @@ public:
   std::vector< rpc::mempool::pending_transaction >
   get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id );
 
+  uint64_t get_pending_account_rc( const account_type& account, std::optional< crypto::multihash > block_id = {} );
+
   bool check_pending_account_resources( const account_type& payer,
                                         uint64_t max_payer_resources,
                                         uint64_t trx_resource_limit,
@@ -283,6 +285,30 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
   }
 
   return pending_transactions;
+}
+
+uint64_t mempool_impl::get_pending_account_rc( const account_type& account,
+                                               std::optional< crypto::multihash > block_id )
+{
+  auto lock = _db.get_shared_lock();
+
+  auto node = relevant_node( block_id, lock );
+
+  KOINOS_ASSERT( node, pending_transaction_unknown_block, "cannot retrieve pending rc from an unknown block" );
+
+  node->get_object( space::address_resources(), account );
+
+  uint64_t max_rc     = 0;
+  uint64_t current_rc = 0;
+
+  if( auto obj = node->get_object( space::address_resources(), account ); obj )
+  {
+    auto arr   = util::converter::to< address_resource_record >( *obj );
+    max_rc     = arr.max_rc();
+    current_rc = arr.current_rc();
+  }
+
+  return max_rc - current_rc;
 }
 
 bool mempool_impl::check_pending_account_resources( const account_type& payer,
@@ -664,6 +690,11 @@ std::vector< rpc::mempool::pending_transaction >
 mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
   return _my->get_pending_transactions( limit, block_id );
+}
+
+uint64_t mempool::get_pending_account_rc( const account_type& account, std::optional< crypto::multihash > block_id )
+{
+  return _my->get_pending_account_rc( account, block_id );
 }
 
 bool mempool::check_pending_account_resources( const account_type& payer,
