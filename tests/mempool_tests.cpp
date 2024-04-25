@@ -669,8 +669,7 @@ BOOST_AUTO_TEST_CASE( pending_rc_fork_test )
   *bam.mutable_block() = b1;
   mempool.handle_block( bam );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer, a1_id ), t1_rc_limit );
-  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer, b1_id ), 0 );
+  BOOST_CHECK_EQUAL( mempool.get_pending_account_rc( payer ), t1_rc_limit );
 }
 
 BOOST_AUTO_TEST_SUITE_END()
