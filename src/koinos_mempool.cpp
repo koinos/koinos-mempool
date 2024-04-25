@@ -320,6 +320,12 @@ int main( int argc, char** argv )
 
                   break;
                 }
+              case rpc::mempool::mempool_request::RequestCase::kGetReservedAccountRc:
+                {
+                  const auto& p = args.get_reserved_account_rc();
+                  resp.mutable_get_reserved_account_rc()->set_rc( mempool->get_reserved_account_rc( p.account() ) );
+                  break;
+                }
               case rpc::mempool::mempool_request::RequestCase::kCheckAccountNonce:
                 {
                   const auto& p = args.check_account_nonce();

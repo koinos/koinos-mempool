@@ -1,6 +1,7 @@
 #include <koinos/mempool/mempool.hpp>
 #include <koinos/mempool/state.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <functional>
 #include <tuple>
@@ -315,7 +316,7 @@ uint64_t mempool_impl::get_reserved_account_rc( const account_type& account ) co
   for( auto node: nodes )
   {
     auto rc    = get_reserved_account_rc_from_node( node, account );
-    pending_rc = rc > pending_rc ? rc : pending_rc;
+    pending_rc = std::max( rc, pending_rc );
   }
 
   return pending_rc;
