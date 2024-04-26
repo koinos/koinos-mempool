@@ -66,6 +66,8 @@ public:
   get_pending_transactions( uint64_t limit                              = constants::max_request_limit,
                             std::optional< crypto::multihash > block_id = {} );
 
+  uint64_t get_reserved_account_rc( const account_type& account ) const;
+
   uint64_t remove_pending_transactions( const std::vector< transaction_id_type >& ids );
 
   uint64_t prune( std::chrono::seconds expiration,
