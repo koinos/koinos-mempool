@@ -120,13 +120,10 @@ std::string create_account_nonce_key( const protocol::transaction& transaction )
 mempool_impl::mempool_impl( state_db::fork_resolution_algorithm algo )
 {
   auto lock = _db.get_unique_lock();
-  _db.open(
-    {},
-    []( state_db::state_node_ptr ) {},
-    algo,
-    lock );
-  auto node_id               = _db.get_head( lock )->id();
-  [[maybe_unused]] auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
+  _db.open( {}, []( state_db::state_node_ptr ) {}, algo, lock );
+  auto node_id = _db.get_head( lock )->id();
+  [[maybe_unused]]
+  auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
   assert( node );
 }
 
@@ -222,7 +219,8 @@ bool mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
   }
 
   _db.finalize_node( block_id, lock );
-  [[maybe_unused]] auto node = _db.create_writable_node( block_id, tmp_id( block_id ), protocol::block_header(), lock );
+  [[maybe_unused]]
+  auto node = _db.create_writable_node( block_id, tmp_id( block_id ), protocol::block_header(), lock );
   assert( node );
 
   return true;
