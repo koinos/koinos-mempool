@@ -46,11 +46,7 @@ private:
   bool check_account_nonce_on_node( state_db::abstract_state_node_ptr node,
                                     const std::string& account_nonce_key ) const;
 
-  std::string get_pending_nonce( const std::string& account,
-                                 std::optional< crypto::multihash > block_id ) const;
-
-  std::string get_pending_nonce_on_node( state_db::abstract_state_node_ptr node,
-                                         const std::string& account ) const;
+  std::string get_pending_nonce_on_node( state_db::abstract_state_node_ptr node, const std::string& account ) const;
 
   uint64_t add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
                                             const protocol::transaction& transaction,
@@ -82,6 +78,8 @@ public:
   bool check_account_nonce( const account_type& payer,
                             const std::string& nonce,
                             std::optional< crypto::multihash > block_id = {} ) const;
+
+  std::string get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const;
 
   uint64_t add_pending_transaction( const protocol::transaction& transaction,
                                     std::chrono::system_clock::time_point time,
@@ -421,43 +419,45 @@ bool mempool_impl::check_account_nonce_on_node( state_db::abstract_state_node_pt
 }
 
 std::string mempool_impl::get_pending_nonce( const std::string& account,
-                                             std::optional< crypto::multihash > block_id ) const {
+                                             std::optional< crypto::multihash > block_id ) const
+{
   auto lock = _db.get_shared_lock();
   state_db::state_node_ptr node;
 
   if( block_id.has_value() )
     node = relevant_node( block_id, lock );
   else
-  {
     node = relevant_node( _db.get_head( lock )->id(), lock );
-  }
 
   return get_pending_nonce_on_node( node, account );
 }
 
 std::string mempool_impl::get_pending_nonce_on_node( state_db::abstract_state_node_ptr node,
-                                              const std::string& account ) const
+                                                     const std::string& account ) const
 {
   chain::value_type nonce;
   nonce.set_uint64_value( std::numeric_limits< uint64_t >::max() );
   auto nonce_bytes = util::converter::as< std::string >( nonce );
 
   std::vector< char > account_nonce_bytes;
-  account_nonce_bytes.reserve(account.size() + nonce_bytes.size());
+  account_nonce_bytes.reserve( account.size() + nonce_bytes.size() );
   account_nonce_bytes.insert( account_nonce_bytes.end(), account.begin(), account.end() );
   account_nonce_bytes.insert( account_nonce_bytes.end(), nonce_bytes.begin(), nonce_bytes.end() );
   std::string account_nonce_key( account_nonce_bytes.begin(), account_nonce_bytes.end() );
 
-  const auto [value, key] = node->get_prev_object( space::account_nonce(), account_nonce_key );
+  const auto [ value, key ] = node->get_prev_object( space::account_nonce(), account_nonce_key );
 
   if( !value )
     return "";
 
+  auto res = std::mismatch( account.begin(), account.end(), key.begin() );
+
   // If the account is not a prefix of the key, then our account has no pending nonce
-  if( std::mismatch( account.begin(), account.end(), key.begin() ).first != account.end() )
+  if( res.first != account.end() )
     return "";
 
-  return *value;
+  // Extract the nonce value from the returned key
+  return std::string( res.second, key.end() );
 }
 
 uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
@@ -765,6 +765,11 @@ bool mempool::check_account_nonce( const account_type& payee,
                                    std::optional< crypto::multihash > block_id ) const
 {
   return _my->check_account_nonce( payee, nonce, block_id );
+}
+
+std::string mempool::get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const
+{
+  return _my->get_pending_nonce( account, block_id );
 }
 
 uint64_t mempool::add_pending_transaction( const protocol::transaction& transaction,
