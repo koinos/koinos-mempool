@@ -344,6 +344,7 @@ int main( int argc, char** argv )
                     p.payee(),
                     p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
                                      : std::optional< crypto::multihash >{} ) );
+                  break;
                 }
               case rpc::mempool::mempool_request::RequestCase::kReserved:
                 resp.mutable_reserved();
