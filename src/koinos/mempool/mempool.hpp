@@ -53,6 +53,8 @@ public:
                             const std::string& nonce,
                             std::optional< crypto::multihash > block_id = {} ) const;
 
+  std::string get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id = {} ) const;
+
   uint64_t add_pending_transaction( const protocol::transaction& transaction,
                                     std::chrono::system_clock::time_point time,
                                     uint64_t max_payer_rc,

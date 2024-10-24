@@ -669,4 +669,62 @@ BOOST_AUTO_TEST_CASE( pending_rc_fork_test )
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), t1_rc_limit );
 }
 
+BOOST_AUTO_TEST_CASE( pending_nonce_test )
+{
+  // This test ensures the correct pending nonce is returned.
+
+  mempool::mempool mempool;
+  protocol::transaction trx;
+  mempool::account_type payer  = _key1.get_public_key().to_address_bytes();
+  uint64_t max_payer_resources = 1'000'000'000'000;
+  chain::value_type nonce_value, expected_nonce;
+
+  nonce_value.set_uint64_value( 1 );
+  trx.mutable_header()->set_rc_limit( 1 );
+  trx.mutable_header()->set_payer( payer );
+  trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+  trx.set_id( sign( _key1, trx ) );
+
+  mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
+
+  // payer2 is before payer1. payer3 is after payer1
+  mempool::account_type payer2 = _key2.get_public_key().to_address_bytes();
+  mempool::account_type payer3 = _key3.get_public_key().to_address_bytes();
+
+  nonce_value.clear_uint64_value();
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer2 ), util::converter::as< std::string >( nonce_value ) );
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer3 ), util::converter::as< std::string >( nonce_value ) );
+
+  // Check adding a transaction on a new node.
+  protocol::block b;
+  b.mutable_header()->set_height( 1 );
+  b.mutable_header()->set_timestamp( 1 );
+  b.mutable_header()->set_signer( payer );
+  b.mutable_header()->set_previous(
+    util::converter::as< std::string >( crypto::multihash::zero( crypto::multicodec::sha2_256 ) ) );
+  *b.add_transactions() = trx;
+  b.set_id( util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, b.header() ) ) );
+
+  broadcast::block_accepted bam;
+  *bam.mutable_block() = b;
+  mempool.handle_block( bam );
+
+  nonce_value.set_uint64_value( 1 );
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), "" );
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+                     util::converter::as< std::string >( nonce_value ) );
+
+  nonce_value.set_uint64_value( 2 );
+  trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+  trx.set_id( sign( _key1, trx ) );
+
+  mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+                     util::converter::as< std::string >( nonce_value ) );
+}
+
 BOOST_AUTO_TEST_SUITE_END()
