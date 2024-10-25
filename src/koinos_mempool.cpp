@@ -337,6 +337,15 @@ int main( int argc, char** argv )
 
                   break;
                 }
+              case rpc::mempool::mempool_request::RequestCase::kGetPendingNonce:
+                {
+                  const auto& p = args.get_pending_nonce();
+                  resp.mutable_get_pending_nonce()->set_nonce( mempool->get_pending_nonce(
+                    p.payee(),
+                    p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
+                                     : std::optional< crypto::multihash >{} ) );
+                  break;
+                }
               case rpc::mempool::mempool_request::RequestCase::kReserved:
                 resp.mutable_reserved();
                 break;
