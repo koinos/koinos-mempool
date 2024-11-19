@@ -19,6 +19,8 @@ struct mempool_fixture
 {
   mempool_fixture()
   {
+    initialize_logging( "mempool_tests", {}, "info" );
+
     std::string seed1 = "alpha bravo charlie delta";
     _key1             = crypto::private_key::regenerate( crypto::hash( crypto::multicodec::sha2_256, seed1 ) );
 
@@ -30,6 +32,11 @@ struct mempool_fixture
 
     std::string seed4 = "mike november oscar papa";
     _key4             = crypto::private_key::regenerate( crypto::hash( crypto::multicodec::sha2_256, seed4 ) );
+  }
+
+  virtual ~mempool_fixture()
+  {
+    boost::log::core::get()->remove_all_sinks();
   }
 
   mempool::transaction_id_type sign( crypto::private_key& key, protocol::transaction& t )
@@ -726,5 +733,36 @@ BOOST_AUTO_TEST_CASE( pending_nonce_test )
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
                      util::converter::as< std::string >( nonce_value ) );
 }
+
+BOOST_AUTO_TEST_CASE( nonce_limits )
+{
+  mempool::mempool mempool;
+  protocol::transaction trx;
+  mempool::account_type payer  = _key1.get_public_key().to_address_bytes();
+  uint64_t max_payer_resources = 1'000'000'000'000;
+  chain::value_type nonce_value, expected_nonce;
+
+  nonce_value.set_uint64_value( 3071 );
+  trx.mutable_header()->set_rc_limit( 1 );
+  trx.mutable_header()->set_payer( payer );
+  trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+  trx.set_id( sign( _key1, trx ) );
+
+  mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
+
+  nonce_value.set_uint64_value( 3072 );
+  trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
+  trx.set_id( sign( _key1, trx ) );
+
+  mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
+
+  BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
+}
+
+// 2815
+// 2943
+// 3071
 
 BOOST_AUTO_TEST_SUITE_END()
