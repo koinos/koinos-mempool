@@ -115,10 +115,9 @@ std::string create_account_nonce_key( const protocol::transaction& transaction )
                                 transaction.header().payer().end() );
   }
 
-  auto nonce_bytes = util::converter::as< std::string >( util::converter::to< chain::value_type >( transaction.header().nonce() ).uint64_value() );
-  account_nonce_bytes.insert( account_nonce_bytes.end(),
-                              nonce_bytes.begin(),
-                              nonce_bytes.end() );
+  auto nonce_bytes = util::converter::as< std::string >(
+    util::converter::to< chain::value_type >( transaction.header().nonce() ).uint64_value() );
+  account_nonce_bytes.insert( account_nonce_bytes.end(), nonce_bytes.begin(), nonce_bytes.end() );
   return std::string( account_nonce_bytes.begin(), account_nonce_bytes.end() );
 }
 
@@ -380,7 +379,8 @@ bool mempool_impl::check_account_nonce( const account_type& payee,
 {
   auto lock = _db.get_shared_lock();
 
-  auto nonce_bytes = util::converter::as< std::string >( util::converter::to< chain::value_type >( nonce ).uint64_value() );
+  auto nonce_bytes =
+    util::converter::as< std::string >( util::converter::to< chain::value_type >( nonce ).uint64_value() );
 
   std::vector< char > account_nonce_bytes;
   account_nonce_bytes.reserve( payee.size() + nonce.size() );

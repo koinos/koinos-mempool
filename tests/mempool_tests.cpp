@@ -742,7 +742,7 @@ BOOST_AUTO_TEST_CASE( nonce_limits )
   uint64_t max_payer_resources = 1'000'000'000'000;
   chain::value_type nonce_value, expected_nonce;
 
-  nonce_value.set_uint64_value( 3071 );
+  nonce_value.set_uint64_value( 3'071 );
   trx.mutable_header()->set_rc_limit( 1 );
   trx.mutable_header()->set_payer( payer );
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
@@ -752,7 +752,7 @@ BOOST_AUTO_TEST_CASE( nonce_limits )
 
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
 
-  nonce_value.set_uint64_value( 3072 );
+  nonce_value.set_uint64_value( 3'072 );
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key1, trx ) );
 
