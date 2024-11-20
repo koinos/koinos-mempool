@@ -259,6 +259,11 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
 
   auto lock = _db.get_shared_lock();
 
+  // If the root is the head, we have not heard of blocks yet.
+  // The passed block ID may be legit, but in the past. Return the transactions we know about.
+  if( _db.get_head( lock )->id() == _db.get_root( lock )->id() )
+    block_id.reset();
+
   auto node = relevant_node( block_id, lock );
 
   KOINOS_ASSERT( node,

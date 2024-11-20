@@ -457,6 +457,8 @@ int main( int argc, char** argv )
                                                  {
                                                    return mempool->handle_block( block_accept );
                                                  } );
+
+                                               client.broadcast( "koinos.mempool.block_accepted", msg );
                                              }
                                              catch( const std::exception& e )
                                              {
