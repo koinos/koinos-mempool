@@ -115,9 +115,9 @@ std::string create_account_nonce_key( const protocol::transaction& transaction )
                                 transaction.header().payer().end() );
   }
 
-  account_nonce_bytes.insert( account_nonce_bytes.end(),
-                              transaction.header().nonce().begin(),
-                              transaction.header().nonce().end() );
+  auto nonce_bytes = util::converter::as< std::string >(
+    util::converter::to< chain::value_type >( transaction.header().nonce() ).uint64_value() );
+  account_nonce_bytes.insert( account_nonce_bytes.end(), nonce_bytes.begin(), nonce_bytes.end() );
   return std::string( account_nonce_bytes.begin(), account_nonce_bytes.end() );
 }
 
@@ -259,6 +259,11 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
 
   auto lock = _db.get_shared_lock();
 
+  // If the root is the head, we have not heard of blocks yet.
+  // The passed block ID may be legit, but in the past. Return the transactions we know about.
+  if( _db.get_head( lock )->id() == _db.get_root( lock )->id() )
+    block_id.reset();
+
   auto node = relevant_node( block_id, lock );
 
   KOINOS_ASSERT( node,
@@ -379,10 +384,13 @@ bool mempool_impl::check_account_nonce( const account_type& payee,
 {
   auto lock = _db.get_shared_lock();
 
+  auto nonce_bytes =
+    util::converter::as< std::string >( util::converter::to< chain::value_type >( nonce ).uint64_value() );
+
   std::vector< char > account_nonce_bytes;
   account_nonce_bytes.reserve( payee.size() + nonce.size() );
   account_nonce_bytes.insert( account_nonce_bytes.end(), payee.begin(), payee.end() );
-  account_nonce_bytes.insert( account_nonce_bytes.end(), nonce.begin(), nonce.end() );
+  account_nonce_bytes.insert( account_nonce_bytes.end(), nonce_bytes.begin(), nonce_bytes.end() );
   std::string account_nonce_key( account_nonce_bytes.begin(), account_nonce_bytes.end() );
 
   if( block_id.has_value() )
@@ -435,9 +443,7 @@ std::string mempool_impl::get_pending_nonce( const std::string& account,
 std::string mempool_impl::get_pending_nonce_on_node( state_db::abstract_state_node_ptr node,
                                                      const std::string& account ) const
 {
-  chain::value_type nonce;
-  nonce.set_uint64_value( std::numeric_limits< uint64_t >::max() );
-  auto nonce_bytes = util::converter::as< std::string >( nonce );
+  auto nonce_bytes = util::converter::as< std::string >( std::numeric_limits< uint64_t >::max() );
 
   std::vector< char > account_nonce_bytes;
   account_nonce_bytes.reserve( account.size() + nonce_bytes.size() );
@@ -457,7 +463,10 @@ std::string mempool_impl::get_pending_nonce_on_node( state_db::abstract_state_no
     return "";
 
   // Extract the nonce value from the returned key
-  return std::string( res.second, key.end() );
+  chain::value_type nonce;
+  nonce.set_uint64_value( util::converter::to< uint64_t >( std::string( res.second, key.end() ) ) );
+
+  return util::converter::as< std::string >( nonce );
 }
 
 uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
