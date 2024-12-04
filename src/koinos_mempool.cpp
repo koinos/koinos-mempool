@@ -355,7 +355,7 @@ int main( int argc, char** argv )
           }
           catch( const koinos::exception& e )
           {
-            LOG(info) << boost::diagnostic_information(e);
+            LOG( info ) << boost::diagnostic_information( e );
             auto error = resp.mutable_error();
             error->set_message( e.what() );
 #pragma GCC diagnostic push
