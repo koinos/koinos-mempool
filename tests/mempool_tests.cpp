@@ -761,8 +761,4 @@ BOOST_AUTO_TEST_CASE( nonce_limits )
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
 }
 
-// 2815
-// 2943
-// 3071
-
 BOOST_AUTO_TEST_SUITE_END()
