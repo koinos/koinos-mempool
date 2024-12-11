@@ -24,8 +24,8 @@ ENV CMAKE_CXX_COMPILER_LAUNCHER ccache
 ENV CCACHE_DIR /build/.ccache
 
 RUN git submodule update --init --recursive && \
-    cmake -DCMAKE_BUILD_TYPE=Release . && \
-    cmake --build . --config Release --parallel $BUILD_THREADS
+    cmake -DCMAKE_BUILD_TYPE=Debug . && \
+    cmake --build . --config Debug --parallel $BUILD_THREADS
 
 FROM alpine:latest
 RUN apk update && \
