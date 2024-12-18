@@ -247,7 +247,19 @@ void mempool_impl::handle_irreversibility( const koinos::broadcast::block_irreve
   auto block_id = util::converter::to< crypto::multihash >( bi.topology().id() );
   auto lock     = _db.get_unique_lock();
   if( auto lib = _db.get_node( block_id, lock ); lib )
+  {
     _db.commit_node( block_id, lock );
+
+    // For all node mutexes
+    for( auto itr = _relevant_node_mutexes.begin(); itr != _relevant_node_mutexes.end(); )
+    {
+      // If the node was removed during commit, remove the mutex
+      if( !_db.get_node( itr->first, lock ) )
+        itr = _relevant_node_mutexes.erase( itr );
+      else
+        ++itr;
+    }
+  }
 }
 
 bool mempool_impl::has_pending_transaction( const transaction_id_type& id,
