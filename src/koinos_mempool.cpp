@@ -87,6 +87,7 @@ int main( int argc, char** argv )
     if( ec == boost::asio::error::operation_aborted )
       return;
 
+    std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
     pruned_count += mpool->prune( exp_time );
 
     auto now = std::chrono::system_clock::now();
