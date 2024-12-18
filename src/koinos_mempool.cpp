@@ -73,6 +73,8 @@ int main( int argc, char** argv )
   auto client          = koinos::mq::client( client_ioc );
   auto timer           = boost::asio::system_timer( server_ioc );
 
+  std::mutex mempool_mutex;
+
   mempool::block_applicator applicator;
 
   timer_func_type timer_func = [ & ]( const boost::system::error_code& ec,
@@ -267,6 +269,7 @@ int main( int argc, char** argv )
 
                                              try
                                              {
+                                               std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                                                applicator.handle_irreversible( block_irr.topology().height() );
                                                mempool->handle_irreversibility( block_irr );
                                              }
@@ -295,6 +298,7 @@ int main( int argc, char** argv )
             {
               case rpc::mempool::mempool_request::RequestCase::kCheckPendingAccountResources:
                 {
+                  std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                   const auto& p = args.check_pending_account_resources();
                   resp.mutable_check_pending_account_resources()->set_success( mempool->check_pending_account_resources(
                     p.payer(),
@@ -307,6 +311,7 @@ int main( int argc, char** argv )
                 }
               case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactions:
                 {
+                  std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                   const auto& p     = args.get_pending_transactions();
                   auto transactions = mempool->get_pending_transactions(
                     p.limit(),
@@ -322,12 +327,14 @@ int main( int argc, char** argv )
                 }
               case rpc::mempool::mempool_request::RequestCase::kGetReservedAccountRc:
                 {
+                  std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                   const auto& p = args.get_reserved_account_rc();
                   resp.mutable_get_reserved_account_rc()->set_rc( mempool->get_reserved_account_rc( p.account() ) );
                   break;
                 }
               case rpc::mempool::mempool_request::RequestCase::kCheckAccountNonce:
                 {
+                  std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                   const auto& p = args.check_account_nonce();
                   resp.mutable_check_account_nonce()->set_success( mempool->check_account_nonce(
                     p.payee(),
@@ -339,6 +346,7 @@ int main( int argc, char** argv )
                 }
               case rpc::mempool::mempool_request::RequestCase::kGetPendingNonce:
                 {
+                  std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                   const auto& p = args.get_pending_nonce();
                   resp.mutable_get_pending_nonce()->set_nonce( mempool->get_pending_nonce(
                     p.payee(),
@@ -400,6 +408,7 @@ int main( int argc, char** argv )
 
         try
         {
+          std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
           auto rc_used = mempool->add_pending_transaction( trx_accept.transaction(),
                                                            std::chrono::system_clock::now(),
                                                            trx_accept.receipt().max_payer_rc(),
@@ -434,6 +443,7 @@ int main( int argc, char** argv )
                                                return;
                                              }
 
+                                             std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                                              mempool->remove_pending_transactions(
                                                std::vector< mempool::transaction_id_type >{ trx_fail.id() } );
                                            } );
@@ -451,6 +461,7 @@ int main( int argc, char** argv )
 
                                              try
                                              {
+                                               std::unique_lock< std::mutex > mempool_lock( mempool_mutex );
                                                applicator.handle_block(
                                                  block_accept,
                                                  [ & ]( const broadcast::block_accepted& block_accept ) -> bool
