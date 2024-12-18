@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <functional>
+#include <shared_mutex>
 #include <tuple>
 
 #include <boost/multiprecision/cpp_int.hpp>
@@ -27,10 +28,11 @@ class mempool_impl final
 {
 private:
   state_db::database _db;
+  std::map< crypto::multihash, std::shared_ptr< std::shared_mutex > > _relevant_node_mutexes;
 
   crypto::multihash tmp_id( crypto::multihash id ) const;
-  state_db::state_node_ptr relevant_node( std::optional< crypto::multihash > id, state_db::shared_lock_ptr lock ) const;
-  state_db::state_node_ptr relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const;
+  std::pair< state_db::state_node_ptr, std::shared_ptr< std::shared_mutex > > relevant_node( std::optional< crypto::multihash > id, state_db::shared_lock_ptr lock ) const;
+  std::pair< state_db::state_node_ptr, std::shared_ptr< std::shared_mutex > > relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const;
 
   void cleanup_account_resources_on_node( state_db::state_node_ptr node,
                                           const pending_transaction_record& pending_trx );
@@ -126,9 +128,11 @@ mempool_impl::mempool_impl( state_db::fork_resolution_algorithm algo )
   auto lock = _db.get_unique_lock();
   _db.open( {}, []( state_db::state_node_ptr ) {}, algo, lock );
   auto node_id = _db.get_head( lock )->id();
+  auto relevant_id = tmp_id( node_id );
   [[maybe_unused]]
-  auto node = _db.create_writable_node( node_id, tmp_id( node_id ), protocol::block_header(), lock );
+  auto node = _db.create_writable_node( node_id, relevant_id, protocol::block_header(), lock );
   assert( node );
+  _relevant_node_mutexes[ relevant_id ] = std::make_shared< std::shared_mutex >();
 }
 
 mempool_impl::~mempool_impl() = default;
@@ -138,42 +142,46 @@ crypto::multihash mempool_impl::tmp_id( crypto::multihash id ) const
   return crypto::hash( crypto::multicodec::sha2_256, id );
 }
 
-state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::multihash > id,
+std::pair< state_db::state_node_ptr, std::shared_ptr< std::shared_mutex > > mempool_impl::relevant_node( std::optional< crypto::multihash > id,
                                                       state_db::shared_lock_ptr lock ) const
 {
   state_db::state_node_ptr node;
+  std::shared_ptr< std::shared_mutex > relevant_mutex;
 
   if( id )
-  {
-    if( node = _db.get_node( *id, lock ); node )
-      node = _db.get_node( tmp_id( node->id() ), lock );
-  }
+    node = _db.get_node( *id, lock );
   else
+    node = _db.get_head( lock );
+
+  if( node )
   {
-    if( node = _db.get_head( lock ); node )
-      node = _db.get_node( tmp_id( node->id() ), lock );
+    auto relevant_id = tmp_id( node->id() );
+    node = _db.get_node( relevant_id, lock );
+    relevant_mutex = _relevant_node_mutexes.at( relevant_id );
   }
 
-  return node;
+  return std::make_pair( node, relevant_mutex );
 }
 
-state_db::state_node_ptr mempool_impl::relevant_node( std::optional< crypto::multihash > id,
+std::pair< state_db::state_node_ptr, std::shared_ptr< std::shared_mutex > > mempool_impl::relevant_node( std::optional< crypto::multihash > id,
                                                       state_db::unique_lock_ptr lock ) const
 {
   state_db::state_node_ptr node;
+  std::shared_ptr< std::shared_mutex > relevant_mutex;
 
   if( id )
-  {
-    if( node = _db.get_node( *id, lock ); node )
-      node = _db.get_node( tmp_id( node->id() ), lock );
-  }
+    node = _db.get_node( *id, lock );
   else
+    node = _db.get_head( lock );
+
+  if( node )
   {
-    if( node = _db.get_head( lock ); node )
-      node = _db.get_node( tmp_id( node->id() ), lock );
+    auto relevant_id = tmp_id( node->id() );
+    node = _db.get_node( relevant_id, lock );
+    relevant_mutex = _relevant_node_mutexes.at( relevant_id );
   }
 
-  return node;
+  return std::make_pair( node, relevant_mutex );
 }
 
 bool mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
@@ -223,9 +231,11 @@ bool mempool_impl::handle_block( const koinos::broadcast::block_accepted& bam )
   }
 
   _db.finalize_node( block_id, lock );
+  auto relevant_id = tmp_id( block_id );
   [[maybe_unused]]
-  auto node = _db.create_writable_node( block_id, tmp_id( block_id ), protocol::block_header(), lock );
+  auto node = _db.create_writable_node( block_id, relevant_id, protocol::block_header(), lock );
   assert( node );
+  _relevant_node_mutexes[ relevant_id ] = std::make_shared< std::shared_mutex >();
 
   return true;
 }
@@ -243,8 +253,11 @@ bool mempool_impl::has_pending_transaction( const transaction_id_type& id,
 {
   auto lock = _db.get_shared_lock();
 
-  if( auto node = relevant_node( block_id, lock ); node )
+  if( auto [node, mutex] = relevant_node( block_id, lock ); node )
+  {
+    std::shared_lock node_lock( *mutex );
     return node->get_object( space::transaction_index(), id ) != nullptr;
+  }
 
   return false;
 }
@@ -264,7 +277,7 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
   if( _db.get_head( lock )->id() == _db.get_root( lock )->id() )
     block_id.reset();
 
-  auto node = relevant_node( block_id, lock );
+  auto [node, mutex] = relevant_node( block_id, lock );
 
   KOINOS_ASSERT( node,
                  pending_transaction_unknown_block,
@@ -273,6 +286,7 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
   std::vector< rpc::mempool::pending_transaction > pending_transactions;
   pending_transactions.reserve( limit );
 
+  std::shared_lock node_lock( *mutex );
   state_db::object_key next = state_db::object_key();
 
   while( pending_transactions.size() < limit )
@@ -338,12 +352,13 @@ bool mempool_impl::check_pending_account_resources( const account_type& payer,
 
   if( block_id.has_value() )
   {
-    auto node = relevant_node( block_id, lock );
+    auto [node, mutex] = relevant_node( block_id, lock );
 
     KOINOS_ASSERT( node,
                    pending_transaction_unknown_block,
                    "cannot check pending account resources from an unknown block" );
 
+    std::shared_lock< std::shared_mutex > node_mutex( *mutex );
     return check_pending_account_resources_on_node( node, payer, max_payer_resources, trx_resource_limit );
   }
 
@@ -353,6 +368,8 @@ bool mempool_impl::check_pending_account_resources( const account_type& payer,
   {
     if( node->is_finalized() )
       continue;
+
+    std::shared_lock< std::shared_mutex > node_lock( *_relevant_node_mutexes.at( node->id() ) );
 
     if( !check_pending_account_resources_on_node( node, payer, max_payer_resources, trx_resource_limit ) )
       return false;
@@ -395,12 +412,13 @@ bool mempool_impl::check_account_nonce( const account_type& payee,
 
   if( block_id.has_value() )
   {
-    auto node = relevant_node( block_id, lock );
+    auto [node, mutex] = relevant_node( block_id, lock );
 
     KOINOS_ASSERT( node,
                    pending_transaction_unknown_block,
                    "cannot check pending account resources from an unknown block" );
 
+    std::shared_lock< std::shared_mutex > node_lock( *mutex );
     return check_account_nonce_on_node( node, account_nonce_key );
   }
   else
@@ -411,6 +429,8 @@ bool mempool_impl::check_account_nonce( const account_type& payee,
     {
       if( node->is_finalized() )
         continue;
+
+      std::shared_lock< std::shared_mutex > node_lock( *_relevant_node_mutexes.at( node->id() ) );
 
       if( check_account_nonce_on_node( node, account_nonce_key ) )
         return true;
@@ -431,12 +451,18 @@ std::string mempool_impl::get_pending_nonce( const std::string& account,
 {
   auto lock = _db.get_shared_lock();
   state_db::state_node_ptr node;
+  std::shared_ptr< std::shared_mutex > mutex;
 
   if( block_id.has_value() )
-    node = relevant_node( block_id, lock );
+    std::tie( node, mutex ) = relevant_node( block_id, lock );
   else
-    node = relevant_node( _db.get_head( lock )->id(), lock );
+    std::tie( node, mutex ) = relevant_node( _db.get_head( lock )->id(), lock );
 
+  KOINOS_ASSERT( node,
+                 pending_transaction_unknown_block,
+                 "cannot check pending nonce from an unknown block" );
+
+  std::shared_lock< std::shared_mutex > node_lock( *mutex );
   return get_pending_nonce_on_node( node, account );
 }
 
@@ -575,44 +601,51 @@ uint64_t mempool_impl::add_pending_transaction( const protocol::transaction& tra
   try
   {
     std::vector< state_db::anonymous_state_node_ptr > anonymous_state_nodes;
-    auto tmp_head = relevant_node( _db.get_head( lock )->id(), lock );
+    auto [tmp_head, head_mutex] = relevant_node( _db.get_head( lock )->id(), lock );
 
-    bool trx_added = false;
-
-    for( auto state_node: nodes )
     {
-      if( state_node->is_finalized() )
-        continue;
+      std::shared_lock< std::shared_mutex > head_lock( *head_mutex );
 
-      auto node = state_node->create_anonymous_node();
-      anonymous_state_nodes.push_back( node );
+      bool trx_added = false;
 
-      try
+      for( auto state_node: nodes )
       {
-        auto rc = add_pending_transaction_to_node( node,
-                                                   transaction,
-                                                   time,
-                                                   max_payer_rc,
-                                                   disk_storaged_used,
-                                                   network_bandwidth_used,
-                                                   compute_bandwidth_used );
+        if( state_node->is_finalized() )
+          continue;
 
-        // We're only returning the RC used as it pertains to head
-        if( state_node->id() == tmp_head->id() )
-          rc_used = rc;
+        auto node = state_node->create_anonymous_node();
+        anonymous_state_nodes.push_back( node );
 
-        trx_added = true;
+        try
+        {
+          auto rc = add_pending_transaction_to_node( node,
+                                                    transaction,
+                                                    time,
+                                                    max_payer_rc,
+                                                    disk_storaged_used,
+                                                    network_bandwidth_used,
+                                                    compute_bandwidth_used );
+
+          // We're only returning the RC used as it pertains to head
+          if( state_node->id() == tmp_head->id() )
+            rc_used = rc;
+
+          trx_added = true;
+        }
+        catch( const pending_transaction_nonce_conflict& )
+        {
+          continue;
+        }
       }
-      catch( const pending_transaction_nonce_conflict& )
-      {
-        continue;
-      }
+
+      KOINOS_ASSERT( trx_added, pending_transaction_nonce_conflict, "transaction nonce conflict" );
     }
 
-    KOINOS_ASSERT( trx_added, pending_transaction_nonce_conflict, "transaction nonce conflict" );
-
     for( auto anonymous_state_node: anonymous_state_nodes )
+    {
+      std::unique_lock< std::shared_mutex > node_lock( *_relevant_node_mutexes.at( anonymous_state_node->id() ) );
       anonymous_state_node->commit();
+    }
   }
   catch( const std::exception& e )
   {
@@ -640,7 +673,8 @@ uint64_t mempool_impl::remove_pending_transactions( const std::vector< transacti
 
   for( auto block_node: nodes )
   {
-    auto node = relevant_node( block_node->id(), lock );
+    auto [node, mutex] = relevant_node( block_node->id(), lock );
+    std::unique_lock< std::shared_mutex > node_lock( *mutex );
 
     auto num_removed = remove_pending_transactions_on_node( node, ids );
 
@@ -689,7 +723,8 @@ uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::syst
 
   for( auto block_node: nodes )
   {
-    auto node = relevant_node( block_node->id(), lock );
+    auto [node, mutex] = relevant_node( block_node->id(), lock );
+    std::unique_lock< std::shared_mutex > node_lock( *mutex );
 
     for( ;; )
     {
