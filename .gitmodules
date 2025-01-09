@@ -1,0 +1,3 @@
+[submodule "external/state_db"]
+	path = external/state_db
+	url = git@github.com:koinos/koinos-state-db-cpp
