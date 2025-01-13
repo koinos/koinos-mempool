@@ -567,6 +567,7 @@ uint64_t mempool_impl::add_pending_transaction( const protocol::transaction& tra
                                                 uint64_t network_bandwidth_used,
                                                 uint64_t compute_bandwidth_used )
 {
+  LOG( info ) << "Adding pending transaction " << util::to_hex( transaction.id() );
   uint64_t rc_used = 0;
 
   auto lock  = _db.get_unique_lock();
@@ -616,16 +617,16 @@ uint64_t mempool_impl::add_pending_transaction( const protocol::transaction& tra
   }
   catch( const std::exception& e )
   {
-    LOG( debug ) << "Failed to apply pending transaction " << util::to_hex( transaction.id() ) << " with: " << e.what();
+    LOG( info ) << "Failed to apply pending transaction " << util::to_hex( transaction.id() ) << " with: " << e.what();
     throw;
   }
   catch( ... )
   {
-    LOG( debug ) << "Failed to apply pending transaction " << util::to_hex( transaction.id() );
+    LOG( info ) << "Failed to apply pending transaction " << util::to_hex( transaction.id() );
     throw;
   }
 
-  LOG( debug ) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
+  LOG( info ) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
 
   return rc_used;
 }
