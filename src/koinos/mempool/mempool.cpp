@@ -748,21 +748,54 @@ mempool::~mempool() = default;
 bool mempool::has_pending_transaction( const transaction_id_type& id,
                                        std::optional< crypto::multihash > block_id ) const
 {
+  bool result = false;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->has_pending_transaction( id, block_id );
+  LOG(info) << "has pending transaction";
+
+  try {
+    result = _my->has_pending_transaction( id, block_id );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 std::vector< rpc::mempool::pending_transaction >
 mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
+  std::vector< rpc::mempool::pending_transaction > result;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->get_pending_transactions( limit, block_id );
+  LOG(info) << "get pending transactions";
+
+  try {
+    result = _my->get_pending_transactions( limit, block_id );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 uint64_t mempool::get_reserved_account_rc( const account_type& account ) const
 {
+  uint64_t result = 0;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->get_reserved_account_rc( account );
+  LOG(info) << "get reserved account rc";
+
+  try {
+    result = _my->get_reserved_account_rc( account );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 bool mempool::check_pending_account_resources( const account_type& payer,
@@ -770,22 +803,55 @@ bool mempool::check_pending_account_resources( const account_type& payer,
                                                uint64_t trx_resource_limit,
                                                std::optional< crypto::multihash > block_id ) const
 {
+  bool result = false;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit, block_id );
+  LOG(info) << "check pending account resources";
+
+  try {
+    result = _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit, block_id );
+  } catch(...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 bool mempool::check_account_nonce( const account_type& payee,
                                    const std::string& nonce,
                                    std::optional< crypto::multihash > block_id ) const
 {
+  bool result = false;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->check_account_nonce( payee, nonce, block_id );
+  LOG(info) << "check pending nonce";
+
+  try {
+    result = _my->check_account_nonce( payee, nonce, block_id );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 std::string mempool::get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const
 {
+  std::string result;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->get_pending_nonce( account, block_id );
+  LOG(info) << "get pending nonce";
+
+  try {
+    result = _my->get_pending_nonce( account, block_id );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 uint64_t mempool::add_pending_transaction( const protocol::transaction& transaction,
@@ -795,37 +861,98 @@ uint64_t mempool::add_pending_transaction( const protocol::transaction& transact
                                            uint64_t network_bandwidth_used,
                                            uint64_t compute_bandwidth_used )
 {
+  uint64_t result = 0;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->add_pending_transaction( transaction,
-                                       time,
-                                       max_payer_rc,
-                                       disk_storaged_used,
-                                       network_bandwidth_used,
-                                       compute_bandwidth_used );
+  LOG(info) << "add pending transaction";
+
+  try {
+    result = _my->add_pending_transaction( transaction,
+                                           time,
+                                           max_payer_rc,
+                                           disk_storaged_used,
+                                           network_bandwidth_used,
+                                           compute_bandwidth_used );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 uint64_t mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
+  uint64_t result = 0;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->remove_pending_transactions( ids );
+  LOG(info) << "remove pending transactions";
+
+  try {
+    result = _my->remove_pending_transactions( ids );
+  } catch (...)
+  {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
+  uint64_t result = 0;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->prune( expiration, now );
+  LOG(info) << "prune";
+
+  try {
+    result = _my->prune( expiration, now );
+  } catch (...) {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
+  return result;
 }
 
 bool mempool::handle_block( const koinos::broadcast::block_accepted& bam )
 {
+  bool result = false;
   std::lock_guard< std::mutex > lock( _mutex );
-  return _my->handle_block( bam );
+
+  LOG(info) << "block accepted";
+
+  LOG(info) << "Pending transactions: " << _my->get_pending_transactions( constants::max_request_limit, {} ).size();
+
+  try {
+    result = _my->handle_block( bam );
+  } catch ( ... )
+  {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Pending transactions: " << _my->get_pending_transactions( constants::max_request_limit, {} ).size();
+  LOG(info) << "Success!";
+
+  return result;
 }
 
 void mempool::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )
 {
   std::lock_guard< std::mutex > lock( _mutex );
-  _my->handle_irreversibility( bi );
+  LOG(info) << "handle irreversibility";
+
+  try {
+    _my->handle_irreversibility( bi );
+  } catch ( ... )
+  {
+    LOG(info) << "ERROR!";
+    throw;
+  }
+
+  LOG(info) << "Success!";
 }
 
 } // namespace koinos::mempool
