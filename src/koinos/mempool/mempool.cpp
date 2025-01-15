@@ -747,20 +747,17 @@ mempool::~mempool() = default;
 bool mempool::has_pending_transaction( const transaction_id_type& id,
                                        std::optional< crypto::multihash > block_id ) const
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->has_pending_transaction( id, block_id );
 }
 
 std::vector< rpc::mempool::pending_transaction >
 mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->get_pending_transactions( limit, block_id );
 }
 
 uint64_t mempool::get_reserved_account_rc( const account_type& account ) const
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->get_reserved_account_rc( account );
 }
 
@@ -769,7 +766,6 @@ bool mempool::check_pending_account_resources( const account_type& payer,
                                                uint64_t trx_resource_limit,
                                                std::optional< crypto::multihash > block_id ) const
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->check_pending_account_resources( payer, max_payer_resources, trx_resource_limit, block_id );
 }
 
@@ -777,13 +773,11 @@ bool mempool::check_account_nonce( const account_type& payee,
                                    const std::string& nonce,
                                    std::optional< crypto::multihash > block_id ) const
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->check_account_nonce( payee, nonce, block_id );
 }
 
 std::string mempool::get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->get_pending_nonce( account, block_id );
 }
 
@@ -794,7 +788,6 @@ uint64_t mempool::add_pending_transaction( const protocol::transaction& transact
                                            uint64_t network_bandwidth_used,
                                            uint64_t compute_bandwidth_used )
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->add_pending_transaction( transaction,
                                        time,
                                        max_payer_rc,
@@ -805,25 +798,21 @@ uint64_t mempool::add_pending_transaction( const protocol::transaction& transact
 
 uint64_t mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->remove_pending_transactions( ids );
 }
 
 uint64_t mempool::prune( std::chrono::seconds expiration, std::chrono::system_clock::time_point now )
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->prune( expiration, now );
 }
 
 bool mempool::handle_block( const koinos::broadcast::block_accepted& bam )
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   return _my->handle_block( bam );
 }
 
 void mempool::handle_irreversibility( const koinos::broadcast::block_irreversible& bi )
 {
-  std::lock_guard< std::mutex > lock( _mutex );
   _my->handle_irreversibility( bi );
 }
 

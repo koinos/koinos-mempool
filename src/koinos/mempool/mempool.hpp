@@ -39,7 +39,6 @@ class mempool final
 {
 private:
   std::unique_ptr< detail::mempool_impl > _my;
-  mutable std::mutex _mutex;
 
 public:
   mempool( state_db::fork_resolution_algorithm algo = state_db::fork_resolution_algorithm::fifo );
