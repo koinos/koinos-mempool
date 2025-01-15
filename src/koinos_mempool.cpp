@@ -346,6 +346,15 @@ int main( int argc, char** argv )
                                      : std::optional< crypto::multihash >{} ) );
                   break;
                 }
+              case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactionCount:
+                {
+                  const auto& p = args.get_pending_transaction_count();
+                  resp.mutable_get_pending_transaction_count()->set_count( mempool->get_pending_transaction_count(
+                    p.payee(),
+                    p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
+                                     : std::optional< crypto::multihash >{} ) );
+                  break;
+                }
               case rpc::mempool::mempool_request::RequestCase::kReserved:
                 resp.mutable_reserved();
                 break;
