@@ -739,11 +739,17 @@ BOOST_AUTO_TEST_CASE( pending_nonce_test )
   BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer2 ), 0 );
   BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer3 ), 0 );
 
-  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ), 2 );
-  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer2, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ), 0 );
-  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer3, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ), 0 );
+  BOOST_CHECK_EQUAL(
+    mempool.get_pending_transaction_count( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+    2 );
+  BOOST_CHECK_EQUAL(
+    mempool.get_pending_transaction_count( payer2, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+    0 );
+  BOOST_CHECK_EQUAL(
+    mempool.get_pending_transaction_count( payer3, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+    0 );
 
-  mempool.remove_pending_transactions( {trx_2_id } );
+  mempool.remove_pending_transactions( { trx_2_id } );
   BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer ), 0 );
 }
 

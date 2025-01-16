@@ -52,7 +52,8 @@ private:
 
   std::string get_pending_nonce_on_node( state_db::abstract_state_node_ptr node, const std::string& account ) const;
 
-  uint64_t get_pending_transaction_count_on_node( state_db::abstract_state_node_ptr node, const std::string& account ) const;
+  uint64_t get_pending_transaction_count_on_node( state_db::abstract_state_node_ptr node,
+                                                  const std::string& account ) const;
 
   uint64_t add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
                                             const protocol::transaction& transaction,
@@ -87,7 +88,8 @@ public:
 
   std::string get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const;
 
-  uint64_t get_pending_transaction_count( const std::string& account, std::optional< crypto::multihash > block_id ) const;
+  uint64_t get_pending_transaction_count( const std::string& account,
+                                          std::optional< crypto::multihash > block_id ) const;
 
   uint64_t add_pending_transaction( const protocol::transaction& transaction,
                                     std::chrono::system_clock::time_point time,
@@ -512,7 +514,7 @@ std::string mempool_impl::get_pending_nonce_on_node( state_db::abstract_state_no
 }
 
 uint64_t mempool_impl::get_pending_transaction_count( const std::string& account,
-                                                         std::optional< crypto::multihash > block_id ) const
+                                                      std::optional< crypto::multihash > block_id ) const
 {
   auto lock = _db.get_shared_lock();
   state_db::state_node_ptr node;
@@ -889,7 +891,8 @@ std::string mempool::get_pending_nonce( const std::string& account, std::optiona
   return _my->get_pending_nonce( account, block_id );
 }
 
-uint64_t mempool::get_pending_transaction_count( const std::string& account, std::optional< crypto::multihash > block_id ) const
+uint64_t mempool::get_pending_transaction_count( const std::string& account,
+                                                 std::optional< crypto::multihash > block_id ) const
 {
   return _my->get_pending_transaction_count( account, block_id );
 }
