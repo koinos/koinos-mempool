@@ -691,6 +691,7 @@ BOOST_AUTO_TEST_CASE( pending_nonce_test )
   trx.mutable_header()->set_payer( payer );
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key1, trx ) );
+  auto trx_1_id = trx.id();
 
   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
@@ -726,12 +727,30 @@ BOOST_AUTO_TEST_CASE( pending_nonce_test )
   nonce_value.set_uint64_value( 2 );
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key1, trx ) );
+  auto trx_2_id = trx.id();
 
   mempool.add_pending_transaction( trx, std::chrono::system_clock::now(), max_payer_resources, 1, 1, 1 );
 
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
                      util::converter::as< std::string >( nonce_value ) );
+
+  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer ), 1 );
+  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer2 ), 0 );
+  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer3 ), 0 );
+
+  BOOST_CHECK_EQUAL(
+    mempool.get_pending_transaction_count( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+    2 );
+  BOOST_CHECK_EQUAL(
+    mempool.get_pending_transaction_count( payer2, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+    0 );
+  BOOST_CHECK_EQUAL(
+    mempool.get_pending_transaction_count( payer3, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
+    0 );
+
+  mempool.remove_pending_transactions( { trx_2_id } );
+  BOOST_CHECK_EQUAL( mempool.get_pending_transaction_count( payer ), 0 );
 }
 
 BOOST_AUTO_TEST_CASE( nonce_limits )

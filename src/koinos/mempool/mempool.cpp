@@ -52,6 +52,9 @@ private:
 
   std::string get_pending_nonce_on_node( state_db::abstract_state_node_ptr node, const std::string& account ) const;
 
+  uint64_t get_pending_transaction_count_on_node( state_db::abstract_state_node_ptr node,
+                                                  const std::string& account ) const;
+
   uint64_t add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
                                             const protocol::transaction& transaction,
                                             std::chrono::system_clock::time_point time,
@@ -84,6 +87,9 @@ public:
                             std::optional< crypto::multihash > block_id = {} ) const;
 
   std::string get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const;
+
+  uint64_t get_pending_transaction_count( const std::string& account,
+                                          std::optional< crypto::multihash > block_id ) const;
 
   uint64_t add_pending_transaction( const protocol::transaction& transaction,
                                     std::chrono::system_clock::time_point time,
@@ -507,6 +513,63 @@ std::string mempool_impl::get_pending_nonce_on_node( state_db::abstract_state_no
   return util::converter::as< std::string >( nonce );
 }
 
+uint64_t mempool_impl::get_pending_transaction_count( const std::string& account,
+                                                      std::optional< crypto::multihash > block_id ) const
+{
+  auto lock = _db.get_shared_lock();
+  state_db::state_node_ptr node;
+  std::shared_ptr< std::shared_mutex > mutex;
+
+  if( block_id.has_value() )
+    std::tie( node, mutex ) = relevant_node( block_id, lock );
+  else
+    std::tie( node, mutex ) = relevant_node( _db.get_head( lock )->id(), lock );
+
+  KOINOS_ASSERT( node, pending_transaction_unknown_block, "cannot check pending nonce from an unknown block" );
+
+  std::shared_lock< std::shared_mutex > node_lock( *mutex );
+  return get_pending_transaction_count_on_node( node, account );
+}
+
+uint64_t mempool_impl::get_pending_transaction_count_on_node( state_db::abstract_state_node_ptr node,
+                                                              const std::string& account ) const
+{
+  auto nonce_bytes = util::converter::as< std::string >( std::numeric_limits< uint64_t >::max() );
+
+  std::vector< char > account_nonce_bytes;
+  account_nonce_bytes.reserve( account.size() + nonce_bytes.size() );
+  account_nonce_bytes.insert( account_nonce_bytes.end(), account.begin(), account.end() );
+  account_nonce_bytes.insert( account_nonce_bytes.end(), nonce_bytes.begin(), nonce_bytes.end() );
+  std::string account_nonce_key( account_nonce_bytes.begin(), account_nonce_bytes.end() );
+
+  uint64_t count = 0;
+
+  // Perform a linear walk to count pending transactions for an account.
+  // This is an O(n) algorithm for the number of transactions per account.
+  // We are going to start with a small limit, so this value will be double digits.
+  // As an optimization, we should add another table to track the count separately.
+  // But that will be done later due to the added complexity and potential
+  // introduction of errors.
+  while( true )
+  {
+    const auto [ value, key ] = node->get_prev_object( space::account_nonce(), account_nonce_key );
+
+    if( !value )
+      break;
+
+    auto res = std::mismatch( account.begin(), account.end(), key.begin() );
+
+    // If the account is not a prefix of the key, then our account has no pending nonce
+    if( res.first != account.end() )
+      break;
+
+    account_nonce_key = key;
+    count++;
+  }
+
+  return count;
+}
+
 uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
                                                         const protocol::transaction& transaction,
                                                         std::chrono::system_clock::time_point time,
@@ -826,6 +889,12 @@ bool mempool::check_account_nonce( const account_type& payee,
 std::string mempool::get_pending_nonce( const std::string& account, std::optional< crypto::multihash > block_id ) const
 {
   return _my->get_pending_nonce( account, block_id );
+}
+
+uint64_t mempool::get_pending_transaction_count( const std::string& account,
+                                                 std::optional< crypto::multihash > block_id ) const
+{
+  return _my->get_pending_transaction_count( account, block_id );
 }
 
 uint64_t mempool::add_pending_transaction( const protocol::transaction& transaction,
