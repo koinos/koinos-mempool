@@ -63,10 +63,10 @@ struct mempool_fixture
 };
 
 mempool::pending_transaction_record make_pending_transaction_record( const protocol::transaction& trx,
-                                                                    std::chrono::system_clock::time_point time,
-                                                                    uint64_t disk_storage_used,
-                                                                    uint64_t network_bandwidth_used,
-                                                                    uint64_t compute_bandwidth_used )
+                                                                     std::chrono::system_clock::time_point time,
+                                                                     uint64_t disk_storage_used,
+                                                                     uint64_t network_bandwidth_used,
+                                                                     uint64_t compute_bandwidth_used )
 {
   mempool::pending_transaction_record pending_transaction;
   *pending_transaction.mutable_transaction() = trx;
@@ -98,14 +98,17 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
 
   BOOST_TEST_MESSAGE( "adding pending transaction" );
   auto trx_resource_limit = t1.header().rc_limit();
-  auto rc_used = mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 2, 3 ), max_payer_resources );
+  auto rc_used =
+    mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 2, 3 ),
+                                     max_payer_resources );
   BOOST_CHECK_EQUAL( t1.header().rc_limit(), rc_used );
 
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_used );
 
   BOOST_TEST_MESSAGE( "adding duplicate pending transaction" );
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 2, 3 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 2, 3 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_insertion_failure );
 
   BOOST_TEST_MESSAGE( "checking payer was not charged for failed pending transaction" );
@@ -142,7 +145,8 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
   max_payer_resources = 1'000'000'000'000;
 
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( t2, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( t2, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_exceeds_resources );
 
   BOOST_TEST_MESSAGE( "removing pending transactions" );
@@ -183,7 +187,9 @@ BOOST_AUTO_TEST_CASE( pending_transaction_pagination )
 
     rc_used += trx.header().rc_limit();
 
-    auto rc = mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+    auto rc = mempool.add_pending_transaction(
+      make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+      max_payer_resources );
     BOOST_CHECK_EQUAL( rc, rc_used );
   }
 
@@ -294,7 +300,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key1, trx ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), 1'000'000'000'000 );
 
@@ -308,7 +315,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
     trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
     trx.set_id( sign( _key1, trx ) );
 
-    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources );
 
     rc_pending += trx_resource_limit;
     BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
@@ -323,7 +331,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
   trx.set_id( sign( _key1, trx ) );
 
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_exceeds_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
@@ -340,7 +349,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key2, trx ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
 
@@ -354,7 +364,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key2, trx ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
 
@@ -366,7 +377,8 @@ BOOST_AUTO_TEST_CASE( pending_transaction_dynamic_max_resources )
   trx.set_id( sign( _key2, trx ) );
 
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_exceeds_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_reserved_account_rc( payer ), rc_pending );
@@ -518,7 +530,8 @@ BOOST_AUTO_TEST_CASE( nonce_basic_test )
   BOOST_REQUIRE( mempool.check_account_nonce( payer, trx.header().nonce() ) );
   BOOST_REQUIRE( mempool.check_account_nonce( payee, trx.header().nonce() ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_REQUIRE( !mempool.check_account_nonce( payer, trx.header().nonce() ) );
   BOOST_REQUIRE( mempool.check_account_nonce( payee, trx.header().nonce() ) );
@@ -527,7 +540,8 @@ BOOST_AUTO_TEST_CASE( nonce_basic_test )
   trx.set_id( sign( _key1, trx ) );
 
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_nonce_conflict );
 
   trx.mutable_header()->set_rc_limit( 10 );
@@ -535,7 +549,8 @@ BOOST_AUTO_TEST_CASE( nonce_basic_test )
   trx.set_id( sign( _key2, trx ) );
   auto trx2_id = trx.id();
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_REQUIRE( !mempool.check_account_nonce( payer, trx.header().nonce() ) );
   BOOST_REQUIRE( !mempool.check_account_nonce( payee, trx.header().nonce() ) );
@@ -544,7 +559,8 @@ BOOST_AUTO_TEST_CASE( nonce_basic_test )
   trx.set_id( sign( _key2, trx ) );
 
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_nonce_conflict );
 
   mempool.remove_pending_transactions( std::vector< mempool::transaction_id_type >{ trx1_id, trx2_id } );
@@ -605,7 +621,8 @@ BOOST_AUTO_TEST_CASE( nonce_fork_test )
   *bam.mutable_block() = b1;
   mempool.handle_block( bam );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_REQUIRE( !mempool.check_account_nonce( payer, t1.header().nonce(), a1_id ) );
   BOOST_REQUIRE( !mempool.check_account_nonce( payer, t1.header().nonce(), b1_id ) );
@@ -618,7 +635,8 @@ BOOST_AUTO_TEST_CASE( nonce_fork_test )
   t2.set_id( sign( _key1, t2 ) );
 
   BOOST_REQUIRE_THROW(
-    mempool.add_pending_transaction( make_pending_transaction_record( t2, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources ),
+    mempool.add_pending_transaction( make_pending_transaction_record( t2, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                     max_payer_resources ),
     mempool::pending_transaction_nonce_conflict );
 
   protocol::block a2;
@@ -663,7 +681,8 @@ BOOST_AUTO_TEST_CASE( pending_rc_fork_test )
   t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   t1.set_id( sign( _key1, t1 ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( t1, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   protocol::block a1;
   a1.mutable_header()->set_height( 1 );
@@ -710,7 +729,8 @@ BOOST_AUTO_TEST_CASE( pending_nonce_test )
   trx.set_id( sign( _key1, trx ) );
   auto trx_1_id = trx.id();
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
 
@@ -746,7 +766,8 @@ BOOST_AUTO_TEST_CASE( pending_nonce_test )
   trx.set_id( sign( _key1, trx ) );
   auto trx_2_id = trx.id();
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer, crypto::multihash::zero( crypto::multicodec::sha2_256 ) ),
@@ -784,7 +805,8 @@ BOOST_AUTO_TEST_CASE( nonce_limits )
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key1, trx ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
 
@@ -792,7 +814,8 @@ BOOST_AUTO_TEST_CASE( nonce_limits )
   trx.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   trx.set_id( sign( _key1, trx ) );
 
-  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ), max_payer_resources );
+  mempool.add_pending_transaction( make_pending_transaction_record( trx, std::chrono::system_clock::now(), 1, 1, 1 ),
+                                   max_payer_resources );
 
   BOOST_CHECK_EQUAL( mempool.get_pending_nonce( payer ), util::converter::as< std::string >( nonce_value ) );
 }
