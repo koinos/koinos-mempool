@@ -10,6 +10,7 @@
 #include <koinos/state_db/state_db.hpp>
 
 #include <koinos/broadcast/broadcast.pb.h>
+#include <koinos/mempool/mempool.pb.h>
 #include <koinos/protocol/protocol.pb.h>
 #include <koinos/rpc/mempool/mempool_rpc.pb.h>
 
@@ -58,16 +59,11 @@ public:
   uint64_t get_pending_transaction_count( const std::string& account,
                                           std::optional< crypto::multihash > block_id = {} ) const;
 
-  uint64_t add_pending_transaction( const protocol::transaction& transaction,
-                                    std::chrono::system_clock::time_point time,
-                                    uint64_t max_payer_rc,
-                                    uint64_t disk_storaged_used,
-                                    uint64_t network_bandwidth_used,
-                                    uint64_t compute_bandwidth_used );
+  uint64_t add_pending_transaction( const pending_transaction_record& transaction, uint64_t max_payer_rc );
 
   bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id = {} ) const;
 
-  std::vector< rpc::mempool::pending_transaction >
+  std::vector< pending_transaction_record >
   get_pending_transactions( uint64_t limit                              = constants::max_request_limit,
                             std::optional< crypto::multihash > block_id = {} );
 

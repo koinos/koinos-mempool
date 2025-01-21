@@ -56,12 +56,8 @@ private:
                                                   const std::string& account ) const;
 
   uint64_t add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
-                                            const protocol::transaction& transaction,
-                                            std::chrono::system_clock::time_point time,
-                                            uint64_t max_payer_rc,
-                                            uint64_t disk_storaged_used,
-                                            uint64_t network_bandwidth_used,
-                                            uint64_t compute_bandwidth_used );
+                                            const pending_transaction_record& pending_transaction,
+                                            uint64_t max_payer_rc );
 
   uint64_t get_reserved_account_rc_from_node( std::shared_ptr< koinos::state_db::state_node > node,
                                               const account_type& account ) const;
@@ -72,7 +68,7 @@ public:
 
   bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const;
 
-  std::vector< rpc::mempool::pending_transaction >
+  std::vector< pending_transaction_record >
   get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id );
 
   uint64_t get_reserved_account_rc( const account_type& account ) const;
@@ -91,12 +87,8 @@ public:
   uint64_t get_pending_transaction_count( const std::string& account,
                                           std::optional< crypto::multihash > block_id ) const;
 
-  uint64_t add_pending_transaction( const protocol::transaction& transaction,
-                                    std::chrono::system_clock::time_point time,
-                                    uint64_t max_payer_rc,
-                                    uint64_t disk_storaged_used,
-                                    uint64_t network_bandwidth_used,
-                                    uint64_t compute_bandwidth_used );
+  uint64_t add_pending_transaction( const pending_transaction_record& pending_transaction,
+                                    uint64_t max_payer_rc );
 
   uint64_t remove_pending_transactions( const std::vector< transaction_id_type >& ids );
 
@@ -282,7 +274,7 @@ bool mempool_impl::has_pending_transaction( const transaction_id_type& id,
   return false;
 }
 
-std::vector< rpc::mempool::pending_transaction >
+std::vector< pending_transaction_record >
 mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
   KOINOS_ASSERT( limit <= constants::max_request_limit,
@@ -303,7 +295,7 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
                  pending_transaction_unknown_block,
                  "cannot retrieve pending transactions from an unknown block" );
 
-  std::vector< rpc::mempool::pending_transaction > pending_transactions;
+  std::vector< pending_transaction_record > pending_transactions;
   pending_transactions.reserve( limit );
 
   std::shared_lock node_lock( *mutex );
@@ -318,15 +310,7 @@ mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::m
 
     next = key;
 
-    auto pending_tx = util::converter::to< pending_transaction_record >( *value );
-
-    rpc::mempool::pending_transaction ptx;
-    *ptx.mutable_transaction() = pending_tx.transaction();
-    ptx.set_disk_storage_used( pending_tx.disk_storage_used() );
-    ptx.set_network_bandwidth_used( pending_tx.network_bandwidth_used() );
-    ptx.set_compute_bandwidth_used( pending_tx.compute_bandwidth_used() );
-
-    pending_transactions.push_back( ptx );
+    pending_transactions.push_back( util::converter::to< pending_transaction_record >( *value ) );
   }
 
   return pending_transactions;
@@ -571,35 +555,31 @@ uint64_t mempool_impl::get_pending_transaction_count_on_node( state_db::abstract
 }
 
 uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_state_node_ptr node,
-                                                        const protocol::transaction& transaction,
-                                                        std::chrono::system_clock::time_point time,
-                                                        uint64_t max_payer_rc,
-                                                        uint64_t disk_storaged_used,
-                                                        uint64_t network_bandwidth_used,
-                                                        uint64_t compute_bandwidth_used )
+                                                        const pending_transaction_record& pending_transaction,
+                                                        uint64_t max_payer_rc )
 {
   uint64_t rc_used = 0;
 
   KOINOS_ASSERT(
     check_pending_account_resources_on_node( node,
-                                             transaction.header().payer(),
+                                             pending_transaction.transaction().header().payer(),
                                              max_payer_rc,
-                                             transaction.header().rc_limit() ),
+                                             pending_transaction.transaction().header().rc_limit() ),
     pending_transaction_exceeds_resources,
     "transaction would exceed maximum resources for account: ${a}",
-    ( "a", util::encode_base58( util::converter::as< std::vector< std::byte > >( transaction.header().payer() ) ) ) );
+    ( "a", util::encode_base58( util::converter::as< std::vector< std::byte > >( pending_transaction.transaction().header().payer() ) ) ) );
 
-  KOINOS_ASSERT( node->get_object( space::transaction_index(), transaction.id() ) == nullptr,
+  KOINOS_ASSERT( node->get_object( space::transaction_index(), pending_transaction.transaction().id() ) == nullptr,
                  pending_transaction_insertion_failure,
                  "cannot insert duplicate transaction" );
 
-  auto account_nonce_key = create_account_nonce_key( transaction );
+  auto account_nonce_key = create_account_nonce_key( pending_transaction.transaction() );
 
   KOINOS_ASSERT(
     check_account_nonce_on_node( node, account_nonce_key ),
     pending_transaction_nonce_conflict,
     "cannot insert transaction for account with duplicate nonce - account: ${a}, nonce: ${n}",
-    ( "a", util::to_base58( transaction.header().payer() ) )( "n", util::to_base64( transaction.header().nonce() ) ) );
+    ( "a", util::to_base58( pending_transaction.transaction().header().payer() ) )( "n", util::to_base64( pending_transaction.transaction().header().nonce() ) ) );
 
   // Grab the latest metadata object if it exists
   mempool_metadata metadata;
@@ -617,27 +597,19 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
   assert( !obj.empty() );
   node->put_object( space::mempool_metadata(), std::string{}, &obj );
 
-  pending_transaction_record pending_tx;
-  *pending_tx.mutable_transaction() = transaction;
-  pending_tx.set_timestamp(
-    std::chrono::duration_cast< std::chrono::milliseconds >( time.time_since_epoch() ).count() );
-  pending_tx.set_disk_storage_used( disk_storaged_used );
-  pending_tx.set_network_bandwidth_used( network_bandwidth_used );
-  pending_tx.set_compute_bandwidth_used( compute_bandwidth_used );
-
   std::string transaction_index_bytes = util::converter::as< std::string >( tx_id );
-  auto pending_transaction_bytes      = util::converter::as< std::string >( pending_tx );
+  auto pending_transaction_bytes      = util::converter::as< std::string >( pending_transaction );
 
   node->put_object( space::pending_transaction(), transaction_index_bytes, &pending_transaction_bytes );
-  node->put_object( space::transaction_index(), transaction.id(), &transaction_index_bytes );
+  node->put_object( space::transaction_index(), pending_transaction.transaction().id(), &transaction_index_bytes );
 
   address_resource_record arr;
-  if( auto obj = node->get_object( space::address_resources(), transaction.header().payer() ); obj )
+  if( auto obj = node->get_object( space::address_resources(), pending_transaction.transaction().header().payer() ); obj )
   {
     arr = util::converter::to< address_resource_record >( *obj );
 
     int128_t max_rc_delta = int128_t( max_payer_rc ) - int128_t( arr.max_rc() );
-    int128_t new_rc       = int128_t( arr.current_rc() ) + max_rc_delta - int128_t( transaction.header().rc_limit() );
+    int128_t new_rc       = int128_t( arr.current_rc() ) + max_rc_delta - int128_t( pending_transaction.transaction().header().rc_limit() );
 
     arr.set_max_rc( max_payer_rc );
     arr.set_current_rc( new_rc.convert_to< uint64_t >() );
@@ -647,13 +619,13 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
   else
   {
     arr.set_max_rc( max_payer_rc );
-    arr.set_current_rc( max_payer_rc - transaction.header().rc_limit() );
+    arr.set_current_rc( max_payer_rc - pending_transaction.transaction().header().rc_limit() );
 
-    rc_used = transaction.header().rc_limit();
+    rc_used = pending_transaction.transaction().header().rc_limit();
   }
 
   auto address_resource_bytes = util::converter::as< std::string >( arr );
-  node->put_object( space::address_resources(), transaction.header().payer(), &address_resource_bytes );
+  node->put_object( space::address_resources(), pending_transaction.transaction().header().payer(), &address_resource_bytes );
 
   std::string account_nonce_value;
   node->put_object( space::account_nonce(), account_nonce_key, &account_nonce_value );
@@ -661,12 +633,8 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
   return rc_used;
 }
 
-uint64_t mempool_impl::add_pending_transaction( const protocol::transaction& transaction,
-                                                std::chrono::system_clock::time_point time,
-                                                uint64_t max_payer_rc,
-                                                uint64_t disk_storaged_used,
-                                                uint64_t network_bandwidth_used,
-                                                uint64_t compute_bandwidth_used )
+uint64_t mempool_impl::add_pending_transaction( const pending_transaction_record& pending_transaction,
+                                                uint64_t max_payer_rc )
 {
   uint64_t rc_used = 0;
 
@@ -693,13 +661,7 @@ uint64_t mempool_impl::add_pending_transaction( const protocol::transaction& tra
 
         try
         {
-          auto rc = add_pending_transaction_to_node( node,
-                                                     transaction,
-                                                     time,
-                                                     max_payer_rc,
-                                                     disk_storaged_used,
-                                                     network_bandwidth_used,
-                                                     compute_bandwidth_used );
+          auto rc = add_pending_transaction_to_node( node, pending_transaction, max_payer_rc );
 
           // We're only returning the RC used as it pertains to head
           if( state_node->id() == tmp_head->id() )
@@ -724,16 +686,16 @@ uint64_t mempool_impl::add_pending_transaction( const protocol::transaction& tra
   }
   catch( const std::exception& e )
   {
-    LOG( debug ) << "Failed to apply pending transaction " << util::to_hex( transaction.id() ) << " with: " << e.what();
+    LOG( debug ) << "Failed to apply pending transaction " << util::to_hex( pending_transaction.transaction().id() ) << " with: " << e.what();
     throw;
   }
   catch( ... )
   {
-    LOG( debug ) << "Failed to apply pending transaction " << util::to_hex( transaction.id() );
+    LOG( debug ) << "Failed to apply pending transaction " << util::to_hex( pending_transaction.transaction().id() );
     throw;
   }
 
-  LOG( debug ) << "Transaction added to mempool: " << util::to_hex( transaction.id() );
+  LOG( debug ) << "Transaction added to mempool: " << util::to_hex( pending_transaction.transaction().id() );
 
   return rc_used;
 }
@@ -860,7 +822,7 @@ bool mempool::has_pending_transaction( const transaction_id_type& id,
   return _my->has_pending_transaction( id, block_id );
 }
 
-std::vector< rpc::mempool::pending_transaction >
+std::vector< pending_transaction_record >
 mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
 {
   return _my->get_pending_transactions( limit, block_id );
@@ -897,19 +859,10 @@ uint64_t mempool::get_pending_transaction_count( const std::string& account,
   return _my->get_pending_transaction_count( account, block_id );
 }
 
-uint64_t mempool::add_pending_transaction( const protocol::transaction& transaction,
-                                           std::chrono::system_clock::time_point time,
-                                           uint64_t max_payer_rc,
-                                           uint64_t disk_storaged_used,
-                                           uint64_t network_bandwidth_used,
-                                           uint64_t compute_bandwidth_used )
+uint64_t mempool::add_pending_transaction( const pending_transaction_record& pending_transaction,
+                                  uint64_t max_payer_rc )
 {
-  return _my->add_pending_transaction( transaction,
-                                       time,
-                                       max_payer_rc,
-                                       disk_storaged_used,
-                                       network_bandwidth_used,
-                                       compute_bandwidth_used );
+  return _my->add_pending_transaction( pending_transaction, max_payer_rc );
 }
 
 uint64_t mempool::remove_pending_transactions( const std::vector< transaction_id_type >& ids )
