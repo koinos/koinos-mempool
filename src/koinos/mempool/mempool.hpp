@@ -59,13 +59,14 @@ public:
   uint64_t get_pending_transaction_count( const std::string& account,
                                           std::optional< crypto::multihash > block_id = {} ) const;
 
-  uint64_t add_pending_transaction( const pending_transaction& pending_trx, std::chrono::system_clock::time_point time, uint64_t max_payer_rc );
+  uint64_t add_pending_transaction( const pending_transaction& pending_trx,
+                                    std::chrono::system_clock::time_point time,
+                                    uint64_t max_payer_rc );
 
   bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id = {} ) const;
 
-  std::vector< pending_transaction >
-  get_pending_transactions( uint64_t limit                              = constants::max_request_limit,
-                            std::optional< crypto::multihash > block_id = {} );
+  std::vector< pending_transaction > get_pending_transactions( uint64_t limit = constants::max_request_limit,
+                                                               std::optional< crypto::multihash > block_id = {} );
 
   uint64_t get_reserved_account_rc( const account_type& account ) const;
 

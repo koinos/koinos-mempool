@@ -36,8 +36,7 @@ private:
   std::pair< state_db::state_node_ptr, std::shared_ptr< std::shared_mutex > >
   relevant_node( std::optional< crypto::multihash > id, state_db::unique_lock_ptr lock ) const;
 
-  void cleanup_account_resources_on_node( state_db::state_node_ptr node,
-                                          const pending_transaction_record& record );
+  void cleanup_account_resources_on_node( state_db::state_node_ptr node, const pending_transaction_record& record );
 
   uint64_t remove_pending_transactions_on_node( state_db::state_node_ptr node,
                                                 const std::vector< transaction_id_type >& ids );
@@ -69,7 +68,7 @@ public:
   bool has_pending_transaction( const transaction_id_type& id, std::optional< crypto::multihash > block_id ) const;
 
   std::vector< pending_transaction > get_pending_transactions( uint64_t limit,
-                                                                      std::optional< crypto::multihash > block_id );
+                                                               std::optional< crypto::multihash > block_id );
 
   uint64_t get_reserved_account_rc( const account_type& account ) const;
 
@@ -275,8 +274,8 @@ bool mempool_impl::has_pending_transaction( const transaction_id_type& id,
   return false;
 }
 
-std::vector< pending_transaction >
-mempool_impl::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
+std::vector< pending_transaction > mempool_impl::get_pending_transactions( uint64_t limit,
+                                                                           std::optional< crypto::multihash > block_id )
 {
   KOINOS_ASSERT( limit <= constants::max_request_limit,
                  pending_transaction_request_overflow,
@@ -559,18 +558,17 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
                                                         const pending_transaction_record& record,
                                                         uint64_t max_payer_rc )
 {
-  uint64_t rc_used = 0;
+  uint64_t rc_used        = 0;
   const auto& transaction = record.pending_transaction().transaction();
 
-  KOINOS_ASSERT( check_pending_account_resources_on_node( node,
-                                                          transaction.header().payer(),
-                                                          max_payer_rc,
-                                                          transaction.header().rc_limit() ),
-                 pending_transaction_exceeds_resources,
-                 "transaction would exceed maximum resources for account: ${a}",
-                 ( "a",
-                   util::encode_base58( util::converter::as< std::vector< std::byte > >(
-                     transaction.header().payer() ) ) ) );
+  KOINOS_ASSERT(
+    check_pending_account_resources_on_node( node,
+                                             transaction.header().payer(),
+                                             max_payer_rc,
+                                             transaction.header().rc_limit() ),
+    pending_transaction_exceeds_resources,
+    "transaction would exceed maximum resources for account: ${a}",
+    ( "a", util::encode_base58( util::converter::as< std::vector< std::byte > >( transaction.header().payer() ) ) ) );
 
   KOINOS_ASSERT( node->get_object( space::transaction_index(), transaction.id() ) == nullptr,
                  pending_transaction_insertion_failure,
@@ -578,12 +576,11 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
 
   auto account_nonce_key = create_account_nonce_key( transaction );
 
-  KOINOS_ASSERT( check_account_nonce_on_node( node, account_nonce_key ),
-                 pending_transaction_nonce_conflict,
-                 "cannot insert transaction for account with duplicate nonce - account: ${a}, nonce: ${n}",
-                 ( "a", util::to_base58( transaction.header().payer() ) )(
-                   "n",
-                   util::to_base64( transaction.header().nonce() ) ) );
+  KOINOS_ASSERT(
+    check_account_nonce_on_node( node, account_nonce_key ),
+    pending_transaction_nonce_conflict,
+    "cannot insert transaction for account with duplicate nonce - account: ${a}, nonce: ${n}",
+    ( "a", util::to_base58( transaction.header().payer() ) )( "n", util::to_base64( transaction.header().nonce() ) ) );
 
   // Grab the latest metadata object if it exists
   mempool_metadata metadata;
@@ -608,14 +605,12 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
   node->put_object( space::transaction_index(), transaction.id(), &transaction_index_bytes );
 
   address_resource_record arr;
-  if( auto obj = node->get_object( space::address_resources(), transaction.header().payer() );
-      obj )
+  if( auto obj = node->get_object( space::address_resources(), transaction.header().payer() ); obj )
   {
     arr = util::converter::to< address_resource_record >( *obj );
 
     int128_t max_rc_delta = int128_t( max_payer_rc ) - int128_t( arr.max_rc() );
-    int128_t new_rc =
-      int128_t( arr.current_rc() ) + max_rc_delta - int128_t( transaction.header().rc_limit() );
+    int128_t new_rc       = int128_t( arr.current_rc() ) + max_rc_delta - int128_t( transaction.header().rc_limit() );
 
     arr.set_max_rc( max_payer_rc );
     arr.set_current_rc( new_rc.convert_to< uint64_t >() );
@@ -631,9 +626,7 @@ uint64_t mempool_impl::add_pending_transaction_to_node( state_db::anonymous_stat
   }
 
   auto address_resource_bytes = util::converter::as< std::string >( arr );
-  node->put_object( space::address_resources(),
-                    transaction.header().payer(),
-                    &address_resource_bytes );
+  node->put_object( space::address_resources(), transaction.header().payer(), &address_resource_bytes );
 
   std::string account_nonce_value;
   node->put_object( space::account_nonce(), account_nonce_key, &account_nonce_value );
@@ -660,7 +653,8 @@ uint64_t mempool_impl::add_pending_transaction( const pending_transaction& pendi
 
       pending_transaction_record record;
       *record.mutable_pending_transaction() = pending_trx;
-      record.set_timestamp( std::chrono::duration_cast< std::chrono::milliseconds >( time.time_since_epoch() ).count() );
+      record.set_timestamp(
+        std::chrono::duration_cast< std::chrono::milliseconds >( time.time_since_epoch() ).count() );
 
       bool trx_added = false;
 
@@ -756,7 +750,8 @@ uint64_t mempool_impl::remove_pending_transactions_on_node( state_db::state_node
     cleanup_account_resources_on_node( node, record );
     node->remove_object( space::pending_transaction(), *seq_obj );
     node->remove_object( space::transaction_index(), id );
-    node->remove_object( space::account_nonce(), create_account_nonce_key( record.pending_transaction().transaction() ) );
+    node->remove_object( space::account_nonce(),
+                         create_account_nonce_key( record.pending_transaction().transaction() ) );
 
     count++;
   }
@@ -792,7 +787,8 @@ uint64_t mempool_impl::prune( std::chrono::seconds expiration, std::chrono::syst
       cleanup_account_resources_on_node( node, record );
       node->remove_object( space::pending_transaction(), key );
       node->remove_object( space::transaction_index(), record.pending_transaction().transaction().id() );
-      node->remove_object( space::account_nonce(), create_account_nonce_key( record.pending_transaction().transaction() ) );
+      node->remove_object( space::account_nonce(),
+                           create_account_nonce_key( record.pending_transaction().transaction() ) );
 
       // Only consider pruned transactions on the fork considered head
       if( block_node->id() == head->id() )
@@ -807,7 +803,7 @@ void mempool_impl::cleanup_account_resources_on_node( state_db::state_node_ptr n
                                                       const pending_transaction_record& record )
 {
   const auto& transaction = record.pending_transaction().transaction();
-  auto obj = node->get_object( space::address_resources(), transaction.header().payer() );
+  auto obj                = node->get_object( space::address_resources(), transaction.header().payer() );
   assert( obj );
 
   auto arr = util::converter::to< address_resource_record >( *obj );
@@ -837,8 +833,8 @@ bool mempool::has_pending_transaction( const transaction_id_type& id,
   return _my->has_pending_transaction( id, block_id );
 }
 
-std::vector< pending_transaction >
-mempool::get_pending_transactions( uint64_t limit, std::optional< crypto::multihash > block_id )
+std::vector< pending_transaction > mempool::get_pending_transactions( uint64_t limit,
+                                                                      std::optional< crypto::multihash > block_id )
 {
   return _my->get_pending_transactions( limit, block_id );
 }
