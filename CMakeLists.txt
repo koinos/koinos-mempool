@@ -12,7 +12,7 @@ FetchContent_MakeAvailable(koinos_cmake)
 include("${koinos_cmake_SOURCE_DIR}/Koinos.cmake")
 
 project(koinos_mempool
-  VERSION 1.4.0
+  VERSION 1.5.0
   DESCRIPTION "The Koinos mempool"
   LANGUAGES CXX C)
 
