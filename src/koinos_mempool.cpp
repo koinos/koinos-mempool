@@ -409,12 +409,18 @@ int main( int argc, char** argv )
 
         try
         {
-          auto rc_used = mempool->add_pending_transaction( trx_accept.transaction(),
+          koinos::mempool::pending_transaction pending_transaction;
+          *pending_transaction.mutable_transaction() = trx_accept.transaction();
+          pending_transaction.set_disk_storage_used( trx_accept.receipt().disk_storage_used() );
+          pending_transaction.set_network_bandwidth_used( trx_accept.receipt().network_bandwidth_used() );
+          pending_transaction.set_compute_bandwidth_used( trx_accept.receipt().compute_bandwidth_used() );
+          pending_transaction.set_system_disk_storage_used( trx_accept.system_disk_storage_used() );
+          pending_transaction.set_system_network_bandwidth_used( trx_accept.system_network_bandwidth_used() );
+          pending_transaction.set_system_compute_bandwidth_used( trx_accept.system_compute_bandwidth_used() );
+
+          auto rc_used = mempool->add_pending_transaction( pending_transaction,
                                                            std::chrono::system_clock::now(),
-                                                           trx_accept.receipt().max_payer_rc(),
-                                                           trx_accept.receipt().disk_storage_used(),
-                                                           trx_accept.receipt().network_bandwidth_used(),
-                                                           trx_accept.receipt().compute_bandwidth_used() );
+                                                           trx_accept.receipt().max_payer_rc() );
 
           broadcast::mempool_accepted accepted_broadcast;
           accepted_broadcast.mutable_transaction()->CopyFrom( trx_accept.transaction() );
