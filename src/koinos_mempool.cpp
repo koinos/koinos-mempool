@@ -355,6 +355,35 @@ int main( int argc, char** argv )
                                      : std::optional< crypto::multihash >{} ) );
                   break;
                 }
+              case rpc::mempool::mempool_request::RequestCase::kGetPendingTransactionsById:
+                {
+                  const auto& p = args.get_pending_transactions_by_id();
+
+                  // This assertion is needed here before we iterate through the transaction ids.
+                  KOINOS_ASSERT( p.transaction_ids_size() <= mempool::constants::max_request_limit,
+                    koinos::mempool::pending_transaction_request_overflow,
+                    "requested too many pending transactions. max: ${max}",
+                    ( "max", mempool::constants::max_request_limit ) );
+
+                  std::vector< koinos::mempool::transaction_id_type > ids;
+                  ids.reserve( p.transaction_ids_size() );
+                  for( int i = 0; i < p.transaction_ids_size(); i++)
+                  {
+                    ids.push_back( p.transaction_ids( i ) );
+                  }
+
+                  auto transactions = mempool->get_pending_transactions(
+                    ids,
+                    p.has_block_id() ? util::converter::to< crypto::multihash >( p.block_id() )
+                                     : std::optional< crypto::multihash >{} );
+                  auto pending_trxs = resp.mutable_get_pending_transactions_by_id();
+                  for( const auto& trx: transactions )
+                  {
+                    pending_trxs->add_pending_transactions()->CopyFrom( trx );
+                  }
+
+                  break;
+                }
               case rpc::mempool::mempool_request::RequestCase::kReserved:
                 resp.mutable_reserved();
                 break;
