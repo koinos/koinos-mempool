@@ -361,13 +361,13 @@ int main( int argc, char** argv )
 
                   // This assertion is needed here before we iterate through the transaction ids.
                   KOINOS_ASSERT( p.transaction_ids_size() <= mempool::constants::max_request_limit,
-                    koinos::mempool::pending_transaction_request_overflow,
-                    "requested too many pending transactions. max: ${max}",
-                    ( "max", mempool::constants::max_request_limit ) );
+                                 koinos::mempool::pending_transaction_request_overflow,
+                                 "requested too many pending transactions. max: ${max}",
+                                 ( "max", mempool::constants::max_request_limit ) );
 
                   std::vector< koinos::mempool::transaction_id_type > ids;
                   ids.reserve( p.transaction_ids_size() );
-                  for( int i = 0; i < p.transaction_ids_size(); i++)
+                  for( int i = 0; i < p.transaction_ids_size(); i++ )
                   {
                     ids.push_back( p.transaction_ids( i ) );
                   }

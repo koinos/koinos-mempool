@@ -94,8 +94,7 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
   t1.mutable_header()->set_nonce( util::converter::as< std::string >( nonce_value ) );
   t1.set_id( sign( _key1, t1 ) );
 
-  auto missing_tid = util::converter::as< std::string >(
-                           crypto::hash( crypto::multicodec::sha2_256, "missing"s ) );
+  auto missing_tid = util::converter::as< std::string >( crypto::hash( crypto::multicodec::sha2_256, "missing"s ) );
 
   BOOST_TEST_MESSAGE( "adding pending transaction" );
   auto trx_resource_limit = t1.header().rc_limit();
@@ -130,11 +129,11 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
     BOOST_REQUIRE_EQUAL( pending_txs[ 0 ].compute_bandwidth_used(), 3 );
   }
   {
-    auto pending_txs = mempool.get_pending_transactions( {t1.id(), missing_tid} );
-    BOOST_TEST_MESSAGE("checking pending transactions size");
-    BOOST_REQUIRE_EQUAL( pending_txs.size(), 1);
+    auto pending_txs = mempool.get_pending_transactions( { t1.id(), missing_tid } );
+    BOOST_TEST_MESSAGE( "checking pending transactions size" );
+    BOOST_REQUIRE_EQUAL( pending_txs.size(), 1 );
     BOOST_TEST_MESSAGE( "checking pending transaction id" );
-    BOOST_REQUIRE_EQUAL( pending_txs[0].transaction().id(), t1.id() );
+    BOOST_REQUIRE_EQUAL( pending_txs[ 0 ].transaction().id(), t1.id() );
   }
 
   BOOST_TEST_MESSAGE( "pending transaction existence check" );
@@ -169,9 +168,9 @@ BOOST_AUTO_TEST_CASE( mempool_basic_test )
     BOOST_REQUIRE_EQUAL( pending_txs.size(), 0 );
   }
   {
-    auto pending_txs = mempool.get_pending_transactions( {t1.id(), missing_tid} );
-    BOOST_TEST_MESSAGE("checking pending transactions size");
-    BOOST_REQUIRE_EQUAL( pending_txs.size(), 0);
+    auto pending_txs = mempool.get_pending_transactions( { t1.id(), missing_tid } );
+    BOOST_TEST_MESSAGE( "checking pending transactions size" );
+    BOOST_REQUIRE_EQUAL( pending_txs.size(), 0 );
   }
 
   BOOST_TEST_MESSAGE( "pending transaction existence check" );

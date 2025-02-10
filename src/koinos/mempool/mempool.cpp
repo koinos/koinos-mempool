@@ -319,8 +319,9 @@ std::vector< pending_transaction > mempool_impl::get_pending_transactions( uint6
   return pending_transactions;
 }
 
-std::vector< pending_transaction > mempool_impl::get_pending_transactions( const std::vector< transaction_id_type >& ids,
-                                                                           std::optional< crypto::multihash > block_id )
+std::vector< pending_transaction >
+mempool_impl::get_pending_transactions( const std::vector< transaction_id_type >& ids,
+                                        std::optional< crypto::multihash > block_id )
 {
   KOINOS_ASSERT( ids.size() <= constants::max_request_limit,
                  pending_transaction_request_overflow,
@@ -353,10 +354,11 @@ std::vector< pending_transaction > mempool_impl::get_pending_transactions( const
       continue;
 
     auto ptx_obj = node->get_object( space::pending_transaction(), *seq_obj );
-    if ( !ptx_obj )
+    if( !ptx_obj )
       continue;
 
-    pending_transactions.push_back( util::converter::to< pending_transaction_record >( *ptx_obj ).pending_transaction() );
+    pending_transactions.push_back(
+      util::converter::to< pending_transaction_record >( *ptx_obj ).pending_transaction() );
   }
 
   return pending_transactions;
