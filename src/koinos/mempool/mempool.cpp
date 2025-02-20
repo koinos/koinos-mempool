@@ -70,6 +70,9 @@ public:
   std::vector< pending_transaction > get_pending_transactions( uint64_t limit,
                                                                std::optional< crypto::multihash > block_id );
 
+  std::vector< pending_transaction > get_pending_transactions( const std::vector< transaction_id_type >& ids,
+                                                               std::optional< crypto::multihash > block_id );
+
   uint64_t get_reserved_account_rc( const account_type& account ) const;
 
   bool check_pending_account_resources( const account_type& payer,
@@ -311,6 +314,51 @@ std::vector< pending_transaction > mempool_impl::get_pending_transactions( uint6
     next = key;
 
     pending_transactions.push_back( util::converter::to< pending_transaction_record >( *value ).pending_transaction() );
+  }
+
+  return pending_transactions;
+}
+
+std::vector< pending_transaction >
+mempool_impl::get_pending_transactions( const std::vector< transaction_id_type >& ids,
+                                        std::optional< crypto::multihash > block_id )
+{
+  KOINOS_ASSERT( ids.size() <= constants::max_request_limit,
+                 pending_transaction_request_overflow,
+                 "requested too many pending transactions. max: ${max}",
+                 ( "max", constants::max_request_limit ) );
+
+  auto lock = _db.get_shared_lock();
+
+  // If the root is the head, we have not heard of blocks yet.
+  // The passed block ID may be legit, but in the past. Return the transactions we know about.
+  if( _db.get_head( lock )->id() == _db.get_root( lock )->id() )
+    block_id.reset();
+
+  auto [ node, mutex ] = relevant_node( block_id, lock );
+
+  KOINOS_ASSERT( node,
+                 pending_transaction_unknown_block,
+                 "cannot retrieve pending transactions from an unknown block" );
+
+  std::vector< pending_transaction > pending_transactions;
+  pending_transactions.reserve( ids.size() );
+
+  std::shared_lock node_lock( *mutex );
+  state_db::object_key next = state_db::object_key();
+
+  for( auto itr = ids.begin(); itr != ids.end(); ++itr )
+  {
+    auto seq_obj = node->get_object( space::transaction_index(), *itr );
+    if( !seq_obj )
+      continue;
+
+    auto ptx_obj = node->get_object( space::pending_transaction(), *seq_obj );
+    if( !ptx_obj )
+      continue;
+
+    pending_transactions.push_back(
+      util::converter::to< pending_transaction_record >( *ptx_obj ).pending_transaction() );
   }
 
   return pending_transactions;
@@ -837,6 +885,12 @@ std::vector< pending_transaction > mempool::get_pending_transactions( uint64_t l
                                                                       std::optional< crypto::multihash > block_id )
 {
   return _my->get_pending_transactions( limit, block_id );
+}
+
+std::vector< pending_transaction > mempool::get_pending_transactions( const std::vector< transaction_id_type >& ids,
+                                                                      std::optional< crypto::multihash > block_id )
+{
+  return _my->get_pending_transactions( ids, block_id );
 }
 
 uint64_t mempool::get_reserved_account_rc( const account_type& account ) const
